@@ -1,0 +1,337 @@
+:root {
+  --text: #4a4650;
+  --text-h: #08060d;
+  --bg: #fafafa;
+  --card-bg: #fff;
+  --border: #e5e4e7;
+  --up: #2e8b57;
+  --down: #c0392b;
+  --accent: #f2a900;
+
+  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, Consolas, monospace;
+
+  font: 16px/145% var(--sans);
+  color-scheme: light dark;
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #9ca3af;
+    --text-h: #f3f4f6;
+    --bg: #111217;
+    --card-bg: #1a1b22;
+    --border: #2e303a;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+h1,
+h2 {
+  font-family: var(--sans);
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+h1 {
+  font-size: 22px;
+  margin: 0;
+}
+
+h2 {
+  font-size: 16px;
+  margin: 0 0 12px;
+}
+
+p {
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+.app-shell {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 20px 16px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.settings-btn {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 14px;
+}
+
+.status-msg {
+  padding: 16px;
+  text-align: center;
+  color: var(--text);
+}
+.status-msg.error {
+  color: var(--down);
+}
+
+.section {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.section-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.range-buttons {
+  display: flex;
+  gap: 6px;
+}
+.range-buttons button {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  color: var(--text);
+  font-size: 13px;
+}
+.range-buttons button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #1a1200;
+}
+
+/* Summary card */
+.summary-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+}
+.summary-price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.summary-price {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--text-h);
+}
+.summary-change.up {
+  color: var(--up);
+}
+.summary-change.down {
+  color: var(--down);
+}
+.summary-zone-line {
+  margin-top: 8px;
+  font-size: 15px;
+  color: var(--text-h);
+}
+.summary-zone-line .tone {
+  color: var(--text);
+  font-size: 13px;
+}
+.summary-grid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+.summary-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border-radius: 8px;
+}
+.summary-cell .label {
+  font-size: 12px;
+  color: var(--text);
+}
+.summary-cell .value {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+.summary-cell .value.up,
+.summary-cell .value.golden {
+  color: var(--up);
+}
+.summary-cell .value.down,
+.summary-cell .value.dead {
+  color: var(--down);
+}
+
+/* Zone gauge */
+.zone-gauge-track {
+  position: relative;
+  display: flex;
+  height: 28px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.zone-gauge-segment {
+  height: 100%;
+  transition: opacity 0.2s;
+}
+.zone-gauge-marker {
+  position: absolute;
+  top: -4px;
+  width: 2px;
+  height: 36px;
+  background: var(--text-h);
+}
+.zone-gauge-marker::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-h);
+}
+.zone-gauge-caption {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.zone-tone-tag {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Price chart */
+.price-chart {
+  height: 320px;
+  margin-top: 8px;
+}
+
+.disclaimer {
+  font-size: 13px;
+  color: var(--text);
+  text-align: center;
+  padding: 8px 4px 0;
+}
+
+/* Settings panel */
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px 12px;
+  overflow-y: auto;
+  z-index: 20;
+}
+.settings-panel {
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 20px;
+  width: 100%;
+  max-width: 640px;
+}
+.settings-note {
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 16px;
+}
+.settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.settings-row {
+  display: grid;
+  grid-template-columns: 90px 16px 90px 1fr 100px 60px;
+  align-items: center;
+  gap: 6px;
+}
+.settings-row input,
+.settings-row select {
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-h);
+  width: 100%;
+}
+.remove-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--down);
+  padding: 6px;
+}
+.add-zone-btn {
+  margin-top: 12px;
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  width: 100%;
+  color: var(--text);
+}
+.settings-actions {
+  margin-top: 20px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.settings-actions button {
+  border-radius: 8px;
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+}
+.settings-actions button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #1a1200;
+}
+
+@media (max-width: 560px) {
+  .settings-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
