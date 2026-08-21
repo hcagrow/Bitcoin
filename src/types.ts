@@ -48,3 +48,33 @@ export interface RealDemandResult {
   verdict: "실수요 가능성 높음" | "파생시장 효과 의심" | "판단 보류";
   checks: RealDemandCheck[];
 }
+
+export interface TradePlan {
+  holdingsQty: number; // total holdings, e.g. BTC
+  targetSellRatioPct: number; // target % of holdings to sell
+}
+
+export interface TradePlanChange {
+  timestamp: string; // ISO datetime of the edit
+  field: "holdingsQty" | "targetSellRatioPct";
+  oldValue: number;
+  newValue: number;
+}
+
+export interface TradeEntry {
+  id: string;
+  date: string; // ISO date
+  side: "buy" | "sell";
+  quantity: number;
+  price: number; // execution price, USD
+}
+
+export interface TradeStats {
+  totalTargetSellQty: number;
+  cumulativeSoldQty: number;
+  remainingTargetQty: number;
+  avgSellPrice: number | null;
+  sellProgressPct: number; // 0-100
+  cumulativeBoughtQty: number;
+  avgBuyPrice: number | null;
+}

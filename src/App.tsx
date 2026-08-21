@@ -5,16 +5,41 @@ import { PriceChart } from "./components/PriceChart";
 import { RealDemandCard } from "./components/RealDemandCard";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { SummaryCard } from "./components/SummaryCard";
+import { TradeLedgerPanel } from "./components/TradeLedgerPanel";
+import { TradePlanPanel } from "./components/TradePlanPanel";
+import { TradeProgressCard } from "./components/TradeProgressCard";
 import { ZoneGauge } from "./components/ZoneGauge";
 import { fetchCurrentPrice, fetchDailyPrices } from "./lib/coingecko";
-import { loadEntries, removeByDate, saveEntries, upsertByDate } from "./lib/entryStore";
+import {
+  loadEntries,
+  loadObject,
+  makeId,
+  removeByDate,
+  removeById,
+  saveEntries,
+  saveObject,
+  upsertByDate,
+} from "./lib/entryStore";
 import { buildIndicatorSeries, findCrosses, latestCrossState } from "./lib/indicators";
 import { evaluateRealDemand } from "./lib/realDemand";
+import { computeTradeStats } from "./lib/tradeLedger";
 import { getZone, loadZones, saveZones } from "./lib/zones";
-import type { DerivativesEntry, EtfFlowEntry, IndicatorSeries, Zone } from "./types";
+import type {
+  DerivativesEntry,
+  EtfFlowEntry,
+  IndicatorSeries,
+  TradeEntry,
+  TradePlan,
+  TradePlanChange,
+  Zone,
+} from "./types";
 
 const ETF_STORAGE_KEY = "btc-app-etf-flow-v1";
 const DERIV_STORAGE_KEY = "btc-app-derivatives-v1";
+const TRADE_PLAN_KEY = "btc-app-trade-plan-v1";
+const TRADE_PLAN_HISTORY_KEY = "btc-app-trade-plan-history-v1";
+const TRADE_ENTRIES_KEY = "btc-app-trade-entries-v1";
+const DEFAULT_TRADE_PLAN: TradePlan = { holdingsQty: 0, targetSellRatioPct: 0 };
 
 const RANGE_OPTIONS = [
   { label: "4개월", days: 120 },
@@ -33,6 +58,11 @@ export default function App() {
   const [rangeDays, setRangeDays] = useState(365);
   const [etfEntries, setEtfEntries] = useState<EtfFlowEntry[]>(() => loadEntries(ETF_STORAGE_KEY));
   const [derivEntries, setDerivEntries] = useState<DerivativesEntry[]>(() => loadEntries(DERIV_STORAGE_KEY));
+  const [tradePlan, setTradePlan] = useState<TradePlan>(() => loadObject(TRADE_PLAN_KEY, DEFAULT_TRADE_PLAN));
+  const [tradePlanHistory, setTradePlanHistory] = useState<TradePlanChange[]>(() =>
+    loadEntries(TRADE_PLAN_HISTORY_KEY),
+  );
+  const [tradeEntries, setTradeEntries] = useState<TradeEntry[]>(() => loadEntries(TRADE_ENTRIES_KEY));
 
   useEffect(() => {
     let cancelled = false;
@@ -72,6 +102,7 @@ export default function App() {
   const currentZone = price != null ? getZone(zones, price) : undefined;
 
   const realDemand = useMemo(() => evaluateRealDemand(etfEntries, derivEntries), [etfEntries, derivEntries]);
+  const tradeStats = useMemo(() => computeTradeStats(tradePlan, tradeEntries), [tradePlan, tradeEntries]);
 
   function handleSaveZones(next: Zone[]) {
     setZones(next);
@@ -106,6 +137,47 @@ export default function App() {
     setDerivEntries((prev) => {
       const next = removeByDate(prev, date);
       saveEntries(DERIV_STORAGE_KEY, next);
+      return next;
+    });
+  }
+
+  function handleSaveTradePlan(next: TradePlan) {
+    const timestamp = new Date().toISOString();
+    const changes: TradePlanChange[] = [];
+    if (next.holdingsQty !== tradePlan.holdingsQty) {
+      changes.push({ timestamp, field: "holdingsQty", oldValue: tradePlan.holdingsQty, newValue: next.holdingsQty });
+    }
+    if (next.targetSellRatioPct !== tradePlan.targetSellRatioPct) {
+      changes.push({
+        timestamp,
+        field: "targetSellRatioPct",
+        oldValue: tradePlan.targetSellRatioPct,
+        newValue: next.targetSellRatioPct,
+      });
+    }
+    setTradePlan(next);
+    saveObject(TRADE_PLAN_KEY, next);
+    if (changes.length > 0) {
+      setTradePlanHistory((prev) => {
+        const nextHistory = [...prev, ...changes];
+        saveEntries(TRADE_PLAN_HISTORY_KEY, nextHistory);
+        return nextHistory;
+      });
+    }
+  }
+
+  function handleAddTradeEntry(entry: Omit<TradeEntry, "id">) {
+    setTradeEntries((prev) => {
+      const next = [...prev, { ...entry, id: makeId() }];
+      saveEntries(TRADE_ENTRIES_KEY, next);
+      return next;
+    });
+  }
+
+  function handleDeleteTradeEntry(id: string) {
+    setTradeEntries((prev) => {
+      const next = removeById(prev, id);
+      saveEntries(TRADE_ENTRIES_KEY, next);
       return next;
     });
   }
@@ -168,6 +240,14 @@ export default function App() {
         </p>
         <EtfFlowPanel entries={etfEntries} onAdd={handleAddEtfEntry} onDelete={handleDeleteEtfEntry} />
         <DerivativesPanel entries={derivEntries} onAdd={handleAddDerivEntry} onDelete={handleDeleteDerivEntry} />
+      </section>
+
+      <TradeProgressCard stats={tradeStats} />
+
+      <section className="section">
+        <h2>매매 장부</h2>
+        <TradePlanPanel plan={tradePlan} history={tradePlanHistory} onSave={handleSaveTradePlan} />
+        <TradeLedgerPanel entries={tradeEntries} onAdd={handleAddTradeEntry} onDelete={handleDeleteTradeEntry} />
       </section>
 
       <p className="disclaimer">

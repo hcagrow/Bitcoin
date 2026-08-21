@@ -26,3 +26,30 @@ export function upsertByDate<T extends { date: string }>(entries: T[], entry: T)
 export function removeByDate<T extends { date: string }>(entries: T[], date: string): T[] {
   return entries.filter((e) => e.date !== date);
 }
+
+export function removeById<T extends { id: string }>(entries: T[], id: string): T[] {
+  return entries.filter((e) => e.id !== id);
+}
+
+export function loadObject<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+export function saveObject<T>(key: string, value: T): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // storage full or unavailable — persistence is best-effort
+  }
+}
+
+export function makeId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
