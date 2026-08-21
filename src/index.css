@@ -243,6 +243,144 @@ button {
   margin-top: 8px;
 }
 
+.section-sub {
+  font-size: 13px;
+  color: var(--text);
+  margin: -4px 0 16px;
+}
+
+/* Real demand card */
+.real-demand-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+}
+.real-demand-card.positive {
+  border-left-color: var(--up);
+}
+.real-demand-card.warning {
+  border-left-color: var(--down);
+}
+.real-demand-card.hold {
+  border-left-color: #b8860b;
+}
+.real-demand-verdict {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-h);
+  margin-bottom: 12px;
+}
+.real-demand-checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.real-demand-checklist li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 14px;
+  flex-wrap: wrap;
+}
+.check-label {
+  color: var(--text-h);
+  font-weight: 500;
+}
+.check-detail {
+  color: var(--text);
+  font-size: 13px;
+}
+
+/* Entry panels (ETF flow, derivatives) */
+.entry-panel {
+  margin-top: 20px;
+}
+.entry-panel:first-of-type {
+  margin-top: 0;
+}
+.entry-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.entry-panel-header h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.streak-badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-h);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+.entry-chart {
+  height: 160px;
+  margin-bottom: 12px;
+}
+.entry-form {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.entry-form input {
+  font: inherit;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-h);
+  flex: 1;
+  min-width: 140px;
+}
+.entry-form button {
+  border-radius: 6px;
+  padding: 6px 16px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #1a1200;
+  font-weight: 600;
+}
+.entry-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.entry-table th,
+.entry-table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+.entry-table th {
+  font-weight: 500;
+  color: var(--text);
+}
+.entry-table td.up {
+  color: var(--up);
+}
+.entry-table td.down {
+  color: var(--down);
+}
+.entry-table .remove-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--down);
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
 .disclaimer {
   font-size: 13px;
   color: var(--text);
