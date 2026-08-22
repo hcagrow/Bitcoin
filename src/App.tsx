@@ -6,7 +6,7 @@ import { DerivativesPanel } from "./components/DerivativesPanel";
 import { EtfFlowPanel } from "./components/EtfFlowPanel";
 import { IndicatorHeatmap } from "./components/IndicatorHeatmap";
 import { IndicatorRadarChart } from "./components/IndicatorRadarChart";
-import { PriceChart } from "./components/PriceChart";
+import { CandleChart } from "./components/CandleChart";
 import { RealDemandCard } from "./components/RealDemandCard";
 import { ScoreTrendChart } from "./components/ScoreTrendChart";
 import { SettingsPanel } from "./components/SettingsPanel";
@@ -17,7 +17,7 @@ import { TradePlanPanel } from "./components/TradePlanPanel";
 import { TradeProgressCard } from "./components/TradeProgressCard";
 import { ZoneGauge } from "./components/ZoneGauge";
 import { computeIndicators, summarizeIndicators } from "./lib/aIndicators";
-import { fetchCurrentPrice, fetchDailyPrices } from "./lib/coingecko";
+import { fetchCurrentPrice, fetchDailyCandles } from "./lib/binance";
 import {
   loadEntries,
   loadObject,
@@ -60,12 +60,10 @@ const EWY_NOTE_KEY = "btc-app-ewy-note-v1";
 const SCORE_HISTORY_KEY = "btc-app-score-history-v1";
 const ALERT_LOG_KEY = "btc-app-alert-log-v1";
 
-// CoinGecko 무료 API는 과거 데이터를 최근 365일까지만 제공하므로(초과 요청 시 HTTP 401),
-// "2년" 옵션은 제공할 수 없습니다.
 const RANGE_OPTIONS = [
   { label: "4개월", days: 120 },
-  { label: "6개월", days: 180 },
-  { label: "1년(최대)", days: 365 },
+  { label: "1년", days: 365 },
+  { label: "2년", days: 730 },
 ];
 
 export default function App() {
@@ -92,6 +90,17 @@ export default function App() {
   const [notificationPermission, setNotificationPermission] = useState(() => getNotificationPermission());
   const [alertLog, setAlertLog] = useState<AlertLogEntry[]>(() => loadEntries(ALERT_LOG_KEY));
   const previouslyNearKeys = useRef<Set<string>>(new Set());
+  // 차트는 CSS 변수를 못 읽으므로 테마를 직접 알려줘야 한다.
+  const [isDark, setIsDark] = useState(
+    () => typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches === true,
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = (e: MediaQueryListEvent) => setIsDark(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -100,9 +109,9 @@ export default function App() {
       setLoading(true);
       setError(null);
       try {
-        const [points, current] = await Promise.all([fetchDailyPrices(365), fetchCurrentPrice()]);
+        const [candles, current] = await Promise.all([fetchDailyCandles(1000), fetchCurrentPrice()]);
         if (cancelled) return;
-        setSeries(buildIndicatorSeries(points));
+        setSeries(buildIndicatorSeries(candles));
         setLivePrice(current.price);
         setChange24h(current.change24h);
       } catch (e) {
@@ -126,7 +135,9 @@ export default function App() {
   const price = livePrice ?? (series ? series.close[series.close.length - 1] : null);
   const ma50 = series ? series.ma50[series.ma50.length - 1] : null;
   const ma200 = series ? series.ma200[series.ma200.length - 1] : null;
-  const ema200 = series ? series.ema200[series.ema200.length - 1] : null;
+  const ma50w = series ? series.ma50w[series.ma50w.length - 1] : null;
+  const bmsbSma = series ? series.bmsbSma[series.bmsbSma.length - 1] : null;
+  const bmsbEma = series ? series.bmsbEma[series.bmsbEma.length - 1] : null;
   const currentZone = price != null ? getZone(zones, price) : undefined;
 
   const realDemand = useMemo(() => evaluateRealDemand(etfEntries, derivEntries), [etfEntries, derivEntries]);
@@ -138,13 +149,15 @@ export default function App() {
         price,
         ma50,
         ma200,
-        ema200,
+        ma50w,
+        bmsbSma,
+        bmsbEma,
         crossState,
         etfEntries,
         derivEntries,
         manual: manualIndicators,
       }),
-    [price, ma50, ma200, ema200, crossState, etfEntries, derivEntries, manualIndicators],
+    [price, ma50, ma200, ma50w, bmsbSma, bmsbEma, crossState, etfEntries, derivEntries, manualIndicators],
   );
   const indicatorTotals = useMemo(() => summarizeIndicators(indicatorResults), [indicatorResults]);
 
@@ -356,7 +369,7 @@ export default function App() {
 
           <section className="section">
             <div className="section-header-row">
-              <h2>가격 차트 (이동평균 오버레이)</h2>
+              <h2>가격 차트 (캔들 + 이평선 + 불마켓밴드 + RSI)</h2>
               <div className="range-buttons">
                 {RANGE_OPTIONS.map((opt) => (
                   <button
@@ -370,12 +383,13 @@ export default function App() {
                 ))}
               </div>
             </div>
-            <PriceChart
+            <CandleChart
               series={series}
               rangeDays={rangeDays}
               crosses={crosses}
               realizedPrice={manualIndicators.realizedPrice?.rawValue}
               balancedPrice={manualIndicators.balancedPrice?.rawValue}
+              isDark={isDark}
             />
           </section>
         </>

@@ -32,7 +32,9 @@ export interface AIndicatorInput {
   price: number | null;
   ma50: number | null;
   ma200: number | null;
-  ema200: number | null;
+  ma50w: number | null;
+  bmsbSma: number | null;
+  bmsbEma: number | null;
   crossState: "golden" | "dead" | "unknown";
   etfEntries: EtfFlowEntry[];
   derivEntries: DerivativesEntry[];
@@ -47,24 +49,41 @@ export function computeIndicators(input: AIndicatorInput): IndicatorResult[] {
   const results: IndicatorResult[] = [];
 
   // 불마켓밴드 (자동 근사): 200일 SMA/EMA 사이 영역. 정확한 공식은 라방 자료로 확정 필요(문서 3-3-0 참고).
-  if (input.price != null && input.ma200 != null && input.ema200 != null) {
-    const top = Math.max(input.ma200, input.ema200);
-    const bottom = Math.min(input.ma200, input.ema200);
+  // 불마켓밴드(Bull Market Support Band) = 20주 SMA / 21주 EMA.
+  // 밴드 위=상승추세 유지(긍정), 밴드 아래=추세 이탈(경계), 밴드 안=공방 중(대기).
+  if (input.price != null && input.bmsbSma != null && input.bmsbEma != null) {
+    const top = Math.max(input.bmsbSma, input.bmsbEma);
+    const bottom = Math.min(input.bmsbSma, input.bmsbEma);
     let score: IndicatorScore;
     let detail: string;
     if (input.price > top) {
-      score = -1;
-      detail = `밴드 상단(${fmtUsd(top)}) 초과 — 과열 구간`;
-    } else if (input.price < bottom) {
       score = 1;
-      detail = `밴드 하단(${fmtUsd(bottom)}) 아래 — 저평가 구간`;
+      detail = `밴드 상단(${fmtUsd(top)}) 위 — 상승추세 유지`;
+    } else if (input.price < bottom) {
+      score = -1;
+      detail = `밴드 하단(${fmtUsd(bottom)}) 아래 — 추세 이탈`;
     } else {
       score = 0;
-      detail = `밴드 내부 (${fmtUsd(bottom)}~${fmtUsd(top)})`;
+      detail = `밴드 내부 (${fmtUsd(bottom)}~${fmtUsd(top)}) — 공방 중`;
     }
-    results.push({ id: "bullBand", label: "불마켓밴드(근사)", score, detail, source: "auto" });
+    results.push({ id: "bullBand", label: "불마켓밴드(20주SMA/21주EMA)", score, detail, source: "auto" });
   } else {
-    results.push({ id: "bullBand", label: "불마켓밴드(근사)", score: null, detail: "데이터 부족", source: "auto" });
+    results.push({ id: "bullBand", label: "불마켓밴드(20주SMA/21주EMA)", score: null, detail: "데이터 부족", source: "auto" });
+  }
+
+  // 50주 이평선 — 라방이 "가장 중요한 중장기 추세선"으로 보는 선.
+  if (input.price != null && input.ma50w != null) {
+    const score: IndicatorScore = input.price > input.ma50w ? 1 : -1;
+    const pct = ((input.price - input.ma50w) / input.ma50w) * 100;
+    results.push({
+      id: "ma50w",
+      label: "50주 이평선",
+      score,
+      detail: `${fmtUsd(input.ma50w)} · 현재가 대비 ${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`,
+      source: "auto",
+    });
+  } else {
+    results.push({ id: "ma50w", label: "50주 이평선", score: null, detail: "데이터 부족", source: "auto" });
   }
 
   // 200일 / 50일 이평선

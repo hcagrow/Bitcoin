@@ -237,11 +237,6 @@ button {
   font-weight: 600;
 }
 
-/* Price chart */
-.price-chart {
-  height: 320px;
-  margin-top: 8px;
-}
 
 .section-sub {
   font-size: 13px;
@@ -847,4 +842,10 @@ button {
   font-weight: 600;
   color: var(--text);
   margin: 4px 0 8px;
+}
+
+/* Candlestick chart (lightweight-charts) */
+.candle-chart {
+  height: 400px;
+  margin-top: 8px;
 }

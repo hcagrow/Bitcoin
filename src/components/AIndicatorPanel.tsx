@@ -95,7 +95,7 @@ export function AIndicatorPanel({ results, manual, onSetTriState, onSetNumeric, 
   return (
     <div className="entry-panel">
       <div className="entry-panel-header">
-        <h2>A지표 (18개)</h2>
+        <h2>A지표 ({results.length}개)</h2>
       </div>
       <p className="section-sub">
         자동 계산 지표는 위 데이터에서 그대로 가져오고, 수동 판단 지표는 직접 긍정/대기/경계를 선택하세요.

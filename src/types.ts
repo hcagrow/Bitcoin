@@ -13,13 +13,27 @@ export interface PricePoint {
   close: number;
 }
 
+export interface Candle {
+  date: string; // ISO date (day granularity)
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
 export interface IndicatorSeries {
   dates: string[];
+  candles: Candle[];
   close: number[];
   ma50: (number | null)[];
   ma200: (number | null)[];
-  /** 200-day EMA — paired with ma200 to draw the bull-market band. */
-  ema200: (number | null)[];
+  /** 50주 이평선 — 일봉 기준 350일. 라방이 "가장 중요한 중장기 추세선"으로 보는 선. */
+  ma50w: (number | null)[];
+  /** Bull Market Support Band 하단/상단: 20주 SMA(140일)와 21주 EMA(147일). */
+  bmsbSma: (number | null)[];
+  bmsbEma: (number | null)[];
+  rsi14: (number | null)[];
 }
 
 export interface CrossEvent {
