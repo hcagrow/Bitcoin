@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>CoinGecko API 체크</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; line-height: 1.5; }
+  h1 { font-size: 20px; }
+  .test { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .status { font-weight: bold; padding: 2px 8px; border-radius: 4px; display: inline-block; }
+  .pending { background: #eee; color: #555; }
+  .ok { background: #d4f4dd; color: #1a7a34; }
+  .fail { background: #fde0de; color: #b3261e; }
+  pre { background: #f6f6f6; padding: 10px; border-radius: 6px; overflow-x: auto; font-size: 12px; white-space: pre-wrap; }
+  button { padding: 8px 16px; font-size: 14px; cursor: pointer; }
+</style>
+</head>
+<body>
+  <h1>CoinGecko API 연결 체크</h1>
+  <p>이 페이지는 BTC 대시보드 앱과 완전히 별개인 독립 파일입니다. 버튼을 누르면 앱이 실제로 사용하는 두 개의
+  CoinGecko API를 브라우저에서 직접 호출해서 결과를 보여줍니다. 그냥 이 파일을 브라우저로 더블클릭해서 열면 됩니다
+  (서버 실행 불필요).</p>
+
+  <button id="runBtn" onclick="runChecks()">API 체크 실행</button>
+
+  <div id="results" style="margin-top:20px;"></div>
+
+  <script>
+    const tests = [
+      {
+        id: "price",
+        title: "1. 현재가 API (simple/price)",
+        url: "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true",
+      },
+      {
+        id: "chart",
+        title: "2. 과거 가격 API (market_chart, 400일치)",
+        url: "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=400&interval=daily",
+      },
+    ];
+
+    function renderSkeleton() {
+      const container = document.getElementById("results");
+      container.innerHTML = tests.map(t => `
+        <div class="test" id="box-${t.id}">
+          <div>${t.title}</div>
+          <div style="font-size:12px;color:#888;word-break:break-all;">${t.url}</div>
+          <div style="margin-top:8px;"><span class="status pending" id="status-${t.id}">대기 중</span></div>
+          <pre id="out-${t.id}" style="display:none;"></pre>
+        </div>
+      `).join("");
+    }
+
+    async function runOne(test) {
+      const statusEl = document.getElementById(`status-${test.id}`);
+      const outEl = document.getElementById(`out-${test.id}`);
+      statusEl.textContent = "요청 중...";
+      statusEl.className = "status pending";
+      const started = performance.now();
+      try {
+        const res = await fetch(test.url);
+        const elapsed = Math.round(performance.now() - started);
+        if (!res.ok) {
+          statusEl.textContent = `실패 (HTTP ${res.status}, ${elapsed}ms)`;
+          statusEl.className = "status fail";
+          outEl.style.display = "block";
+          outEl.textContent = await res.text();
+          return;
+        }
+        const data = await res.json();
+        statusEl.textContent = `성공 (${elapsed}ms)`;
+        statusEl.className = "status ok";
+        outEl.style.display = "block";
+        outEl.textContent = JSON.stringify(data, null, 2).slice(0, 2000);
+      } catch (e) {
+        const elapsed = Math.round(performance.now() - started);
+        statusEl.textContent = `요청 자체 실패 (${elapsed}ms)`;
+        statusEl.className = "status fail";
+        outEl.style.display = "block";
+        outEl.textContent = String(e) + "\n\n(네트워크 차단, CORS 문제, 또는 오프라인일 수 있습니다.)";
+      }
+    }
+
+    async function runChecks() {
+      renderSkeleton();
+      for (const t of tests) {
+        await runOne(t);
+      }
+    }
+  </script>
+</body>
+</html>
