@@ -693,6 +693,25 @@ button {
   width: 160px;
   max-width: 100%;
 }
+.chart-price-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text);
+}
+.chart-price-input input {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-h);
+  width: 110px;
+}
+
 .ewy-note {
   margin-top: 16px;
   display: flex;

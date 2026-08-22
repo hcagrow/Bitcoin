@@ -24,11 +24,15 @@ export function ema(values: number[], period: number): number[] {
 export function buildIndicatorSeries(points: PricePoint[]): IndicatorSeries {
   const dates = points.map((p) => p.date);
   const close = points.map((p) => p.close);
+  const ema200Raw = ema(close, 200);
   return {
     dates,
     close,
     ma50: sma(close, 50),
     ma200: sma(close, 200),
+    // Blank the EMA until it has 200 samples behind it, so the band starts
+    // where the SMA does instead of trailing a seed value across the chart.
+    ema200: ema200Raw.map((v, i) => (i >= 199 ? v : null)),
   };
 }
 

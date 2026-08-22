@@ -120,14 +120,13 @@ export default function App() {
     };
   }, []);
 
-  const crossState = useMemo(() => {
-    if (!series) return "unknown" as const;
-    return latestCrossState(findCrosses(series));
-  }, [series]);
+  const crosses = useMemo(() => (series ? findCrosses(series) : []), [series]);
+  const crossState = useMemo(() => latestCrossState(crosses), [crosses]);
 
   const price = livePrice ?? (series ? series.close[series.close.length - 1] : null);
   const ma50 = series ? series.ma50[series.ma50.length - 1] : null;
   const ma200 = series ? series.ma200[series.ma200.length - 1] : null;
+  const ema200 = series ? series.ema200[series.ema200.length - 1] : null;
   const currentZone = price != null ? getZone(zones, price) : undefined;
 
   const realDemand = useMemo(() => evaluateRealDemand(etfEntries, derivEntries), [etfEntries, derivEntries]);
@@ -139,13 +138,13 @@ export default function App() {
         price,
         ma50,
         ma200,
-        close: series?.close ?? [],
+        ema200,
         crossState,
         etfEntries,
         derivEntries,
         manual: manualIndicators,
       }),
-    [price, ma50, ma200, series, crossState, etfEntries, derivEntries, manualIndicators],
+    [price, ma50, ma200, ema200, crossState, etfEntries, derivEntries, manualIndicators],
   );
   const indicatorTotals = useMemo(() => summarizeIndicators(indicatorResults), [indicatorResults]);
 
@@ -283,7 +282,9 @@ export default function App() {
 
   function handleSetTriState(id: string, score: IndicatorScore) {
     setManualIndicators((prev) => {
-      const next = { ...prev, [id]: { score, updatedAt: new Date().toISOString() } };
+      // Keep any rawValue already entered — 실현가격/밸런스가격은 판정과 별개로
+      // 차트에 그릴 가격을 함께 들고 있으므로 여기서 지우면 차트 선이 사라진다.
+      const next = { ...prev, [id]: { ...prev[id], score, updatedAt: new Date().toISOString() } };
       saveObject(MANUAL_INDICATORS_KEY, next);
       return next;
     });
@@ -369,7 +370,13 @@ export default function App() {
                 ))}
               </div>
             </div>
-            <PriceChart series={series} rangeDays={rangeDays} />
+            <PriceChart
+              series={series}
+              rangeDays={rangeDays}
+              crosses={crosses}
+              realizedPrice={manualIndicators.realizedPrice?.rawValue}
+              balancedPrice={manualIndicators.balancedPrice?.rawValue}
+            />
           </section>
         </>
       )}

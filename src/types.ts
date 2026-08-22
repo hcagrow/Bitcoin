@@ -18,6 +18,8 @@ export interface IndicatorSeries {
   close: number[];
   ma50: (number | null)[];
   ma200: (number | null)[];
+  /** 200-day EMA — paired with ma200 to draw the bull-market band. */
+  ema200: (number | null)[];
 }
 
 export interface CrossEvent {

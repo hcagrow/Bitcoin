@@ -54,6 +54,32 @@ function NumericIndicatorRow({
   );
 }
 
+/** 가격 차트에 점선으로 겹쳐 그릴 수 있도록, 판정과 별개로 실제 가격도 받는 지표들. */
+const CHART_LINE_INDICATOR_IDS = new Set(["realizedPrice", "balancedPrice"]);
+
+function ChartPriceInput({ value, onSave }: { value: number | undefined; onSave: (v: number) => void }) {
+  const [draft, setDraft] = useState(value != null ? String(value) : "");
+
+  function handleBlur() {
+    const v = Number(draft);
+    if (draft !== "" && !Number.isNaN(v)) onSave(v);
+  }
+
+  return (
+    <label className="chart-price-input">
+      차트 표시용 가격($)
+      <input
+        type="number"
+        step="any"
+        value={draft}
+        placeholder="선택 입력"
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={handleBlur}
+      />
+    </label>
+  );
+}
+
 interface Props {
   results: IndicatorResult[];
   manual: ManualIndicatorMap;
@@ -128,6 +154,12 @@ export function AIndicatorPanel({ results, manual, onSetTriState, onSetNumeric, 
                         </button>
                       ))}
                     </div>
+                    {CHART_LINE_INDICATOR_IDS.has(r.id) && (
+                      <ChartPriceInput
+                        value={manual[r.id]?.rawValue}
+                        onSave={(v) => onSetNumeric(r.id, v)}
+                      />
+                    )}
                   </td>
                 </tr>
               );

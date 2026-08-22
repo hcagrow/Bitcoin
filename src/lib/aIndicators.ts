@@ -1,5 +1,4 @@
 import { AVG_CYCLE_DAYS, computeCyclePosition } from "./cycle";
-import { ema, sma } from "./indicators";
 import { ETF_STREAK_TARGET, FUNDING_SPIKE_THRESHOLD_PCT, etfInflowStreak } from "./realDemand";
 import type {
   DerivativesEntry,
@@ -33,7 +32,7 @@ export interface AIndicatorInput {
   price: number | null;
   ma50: number | null;
   ma200: number | null;
-  close: number[];
+  ema200: number | null;
   crossState: "golden" | "dead" | "unknown";
   etfEntries: EtfFlowEntry[];
   derivEntries: DerivativesEntry[];
@@ -48,30 +47,24 @@ export function computeIndicators(input: AIndicatorInput): IndicatorResult[] {
   const results: IndicatorResult[] = [];
 
   // 불마켓밴드 (자동 근사): 200일 SMA/EMA 사이 영역. 정확한 공식은 라방 자료로 확정 필요(문서 3-3-0 참고).
-  if (input.price != null && input.close.length >= 200) {
-    const s = sma(input.close, 200).at(-1);
-    const e = ema(input.close, 200).at(-1);
-    if (s != null && e != null) {
-      const top = Math.max(s, e);
-      const bottom = Math.min(s, e);
-      let score: IndicatorScore;
-      let detail: string;
-      if (input.price > top) {
-        score = -1;
-        detail = `밴드 상단(${fmtUsd(top)}) 초과 — 과열 구간`;
-      } else if (input.price < bottom) {
-        score = 1;
-        detail = `밴드 하단(${fmtUsd(bottom)}) 아래 — 저평가 구간`;
-      } else {
-        score = 0;
-        detail = `밴드 내부 (${fmtUsd(bottom)}~${fmtUsd(top)})`;
-      }
-      results.push({ id: "bullBand", label: "불마켓밴드(근사)", score, detail, source: "auto" });
+  if (input.price != null && input.ma200 != null && input.ema200 != null) {
+    const top = Math.max(input.ma200, input.ema200);
+    const bottom = Math.min(input.ma200, input.ema200);
+    let score: IndicatorScore;
+    let detail: string;
+    if (input.price > top) {
+      score = -1;
+      detail = `밴드 상단(${fmtUsd(top)}) 초과 — 과열 구간`;
+    } else if (input.price < bottom) {
+      score = 1;
+      detail = `밴드 하단(${fmtUsd(bottom)}) 아래 — 저평가 구간`;
     } else {
-      results.push({ id: "bullBand", label: "불마켓밴드(근사)", score: null, detail: "데이터 부족", source: "auto" });
+      score = 0;
+      detail = `밴드 내부 (${fmtUsd(bottom)}~${fmtUsd(top)})`;
     }
+    results.push({ id: "bullBand", label: "불마켓밴드(근사)", score, detail, source: "auto" });
   } else {
-    results.push({ id: "bullBand", label: "불마켓밴드(근사)", score: null, detail: "가격 데이터 없음", source: "auto" });
+    results.push({ id: "bullBand", label: "불마켓밴드(근사)", score: null, detail: "데이터 부족", source: "auto" });
   }
 
   // 200일 / 50일 이평선
