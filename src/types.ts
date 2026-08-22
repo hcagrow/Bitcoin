@@ -78,3 +78,28 @@ export interface TradeStats {
   cumulativeBoughtQty: number;
   avgBuyPrice: number | null;
 }
+
+// A지표: 1=긍정, 0=대기/중립, -1=경계
+export type IndicatorScore = 1 | 0 | -1;
+export type IndicatorSource = "auto" | "manual";
+
+export interface IndicatorResult {
+  id: string;
+  label: string;
+  score: IndicatorScore | null; // null = 데이터 없음/판단 불가
+  detail: string;
+  source: IndicatorSource;
+}
+
+export interface ManualIndicatorState {
+  score: IndicatorScore;
+  rawValue?: number; // for threshold-classified indicators (MVRV, DXY)
+  updatedAt: string; // ISO datetime
+}
+
+export type ManualIndicatorMap = Record<string, ManualIndicatorState>;
+
+export interface DailyScoreSnapshot {
+  date: string; // ISO date, one snapshot per day
+  total: number;
+}

@@ -1,14 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
+import { AIndicatorPanel } from "./components/AIndicatorPanel";
+import { AIndicatorSummaryCard } from "./components/AIndicatorSummaryCard";
 import { DerivativesPanel } from "./components/DerivativesPanel";
 import { EtfFlowPanel } from "./components/EtfFlowPanel";
+import { IndicatorHeatmap } from "./components/IndicatorHeatmap";
+import { IndicatorRadarChart } from "./components/IndicatorRadarChart";
 import { PriceChart } from "./components/PriceChart";
 import { RealDemandCard } from "./components/RealDemandCard";
+import { ScoreTrendChart } from "./components/ScoreTrendChart";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { SummaryCard } from "./components/SummaryCard";
 import { TradeLedgerPanel } from "./components/TradeLedgerPanel";
 import { TradePlanPanel } from "./components/TradePlanPanel";
 import { TradeProgressCard } from "./components/TradeProgressCard";
 import { ZoneGauge } from "./components/ZoneGauge";
+import { computeIndicators, summarizeIndicators } from "./lib/aIndicators";
 import { fetchCurrentPrice, fetchDailyPrices } from "./lib/coingecko";
 import {
   loadEntries,
@@ -25,9 +31,12 @@ import { evaluateRealDemand } from "./lib/realDemand";
 import { computeTradeStats } from "./lib/tradeLedger";
 import { getZone, loadZones, saveZones } from "./lib/zones";
 import type {
+  DailyScoreSnapshot,
   DerivativesEntry,
   EtfFlowEntry,
+  IndicatorScore,
   IndicatorSeries,
+  ManualIndicatorMap,
   TradeEntry,
   TradePlan,
   TradePlanChange,
@@ -40,6 +49,9 @@ const TRADE_PLAN_KEY = "btc-app-trade-plan-v1";
 const TRADE_PLAN_HISTORY_KEY = "btc-app-trade-plan-history-v1";
 const TRADE_ENTRIES_KEY = "btc-app-trade-entries-v1";
 const DEFAULT_TRADE_PLAN: TradePlan = { holdingsQty: 0, targetSellRatioPct: 0 };
+const MANUAL_INDICATORS_KEY = "btc-app-manual-indicators-v1";
+const EWY_NOTE_KEY = "btc-app-ewy-note-v1";
+const SCORE_HISTORY_KEY = "btc-app-score-history-v1";
 
 const RANGE_OPTIONS = [
   { label: "4개월", days: 120 },
@@ -63,6 +75,11 @@ export default function App() {
     loadEntries(TRADE_PLAN_HISTORY_KEY),
   );
   const [tradeEntries, setTradeEntries] = useState<TradeEntry[]>(() => loadEntries(TRADE_ENTRIES_KEY));
+  const [manualIndicators, setManualIndicators] = useState<ManualIndicatorMap>(() =>
+    loadObject(MANUAL_INDICATORS_KEY, {}),
+  );
+  const [ewyNote, setEwyNote] = useState<string>(() => loadObject(EWY_NOTE_KEY, ""));
+  const [scoreHistory, setScoreHistory] = useState<DailyScoreSnapshot[]>(() => loadEntries(SCORE_HISTORY_KEY));
 
   useEffect(() => {
     let cancelled = false;
@@ -103,6 +120,33 @@ export default function App() {
 
   const realDemand = useMemo(() => evaluateRealDemand(etfEntries, derivEntries), [etfEntries, derivEntries]);
   const tradeStats = useMemo(() => computeTradeStats(tradePlan, tradeEntries), [tradePlan, tradeEntries]);
+
+  const indicatorResults = useMemo(
+    () =>
+      computeIndicators({
+        price,
+        ma50,
+        ma200,
+        close: series?.close ?? [],
+        crossState,
+        etfEntries,
+        derivEntries,
+        manual: manualIndicators,
+      }),
+    [price, ma50, ma200, series, crossState, etfEntries, derivEntries, manualIndicators],
+  );
+  const indicatorTotals = useMemo(() => summarizeIndicators(indicatorResults), [indicatorResults]);
+
+  useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    setScoreHistory((prev) => {
+      const existing = prev.find((s) => s.date === today);
+      if (existing && existing.total === indicatorTotals.total) return prev;
+      const next = upsertByDate(prev, { date: today, total: indicatorTotals.total });
+      saveEntries(SCORE_HISTORY_KEY, next);
+      return next;
+    });
+  }, [indicatorTotals.total]);
 
   function handleSaveZones(next: Zone[]) {
     setZones(next);
@@ -182,6 +226,29 @@ export default function App() {
     });
   }
 
+  function handleSetTriState(id: string, score: IndicatorScore) {
+    setManualIndicators((prev) => {
+      const next = { ...prev, [id]: { score, updatedAt: new Date().toISOString() } };
+      saveObject(MANUAL_INDICATORS_KEY, next);
+      return next;
+    });
+  }
+
+  function handleSetNumeric(id: string, rawValue: number) {
+    setManualIndicators((prev) => {
+      const existing = prev[id];
+      const score = existing?.score ?? 0;
+      const next = { ...prev, [id]: { score, rawValue, updatedAt: new Date().toISOString() } };
+      saveObject(MANUAL_INDICATORS_KEY, next);
+      return next;
+    });
+  }
+
+  function handleSetEwyNote(note: string) {
+    setEwyNote(note);
+    saveObject(EWY_NOTE_KEY, note);
+  }
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -240,6 +307,35 @@ export default function App() {
         </p>
         <EtfFlowPanel entries={etfEntries} onAdd={handleAddEtfEntry} onDelete={handleDeleteEtfEntry} />
         <DerivativesPanel entries={derivEntries} onAdd={handleAddDerivEntry} onDelete={handleDeleteDerivEntry} />
+      </section>
+
+      <AIndicatorSummaryCard totals={indicatorTotals} />
+
+      <section className="section">
+        <h2>A지표 종합 시각화</h2>
+        <div className="ai-viz-grid">
+          <div>
+            <h3>레이더 차트 — 지금 이 순간</h3>
+            <IndicatorRadarChart results={indicatorResults} />
+          </div>
+          <div>
+            <h3>신호등 히트맵 — 빠르게 스캔</h3>
+            <IndicatorHeatmap results={indicatorResults} />
+          </div>
+        </div>
+        <h3>종합 점수 추세</h3>
+        <ScoreTrendChart snapshots={scoreHistory} />
+      </section>
+
+      <section className="section">
+        <AIndicatorPanel
+          results={indicatorResults}
+          manual={manualIndicators}
+          onSetTriState={handleSetTriState}
+          onSetNumeric={handleSetNumeric}
+          ewyNote={ewyNote}
+          onSetEwyNote={handleSetEwyNote}
+        />
       </section>
 
       <TradeProgressCard stats={tradeStats} />

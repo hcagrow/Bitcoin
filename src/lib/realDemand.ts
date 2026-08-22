@@ -1,8 +1,8 @@
 import type { DerivativesEntry, EtfFlowEntry, RealDemandCheck, RealDemandResult } from "../types";
 
-const ETF_STREAK_TARGET = 3;
+export const ETF_STREAK_TARGET = 3;
 // 급등으로 간주하는 펀딩비 절대값(%/8h) 기준선 — 필요시 조정 가능
-const FUNDING_SPIKE_THRESHOLD_PCT = 0.08;
+export const FUNDING_SPIKE_THRESHOLD_PCT = 0.08;
 // 청산 후 "안정화"로 볼 미결제약정의 전일 대비 변동폭(%) 기준선
 const OI_SWING_THRESHOLD_PCT = 8;
 

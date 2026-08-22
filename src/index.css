@@ -529,3 +529,186 @@ button {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* A-indicator summary card */
+.ai-summary-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+}
+.ai-summary-card.positive {
+  border-left-color: var(--up);
+}
+.ai-summary-card.warning {
+  border-left-color: var(--down);
+}
+.ai-summary-card.hold {
+  border-left-color: #b8860b;
+}
+.ai-summary-total {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-h);
+  margin-bottom: 8px;
+}
+.ai-summary-breakdown {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  font-weight: 600;
+}
+.ai-summary-breakdown .up {
+  color: var(--up);
+}
+.ai-summary-breakdown .down {
+  color: var(--down);
+}
+.ai-summary-breakdown .neutral {
+  color: var(--text);
+}
+
+/* Radar + heatmap layout */
+.ai-viz-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+.ai-viz-grid h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 8px;
+}
+@media (max-width: 640px) {
+  .ai-viz-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.radar-chart {
+  height: 280px;
+}
+.indicator-heatmap {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.heatmap-cell {
+  padding: 8px 6px;
+  border-radius: 6px;
+  font-size: 11px;
+  text-align: center;
+  color: #08060d;
+  line-height: 1.3;
+}
+.cell-positive {
+  background: #7fc79c;
+}
+.cell-negative {
+  background: #e59a91;
+}
+.cell-neutral {
+  background: #e8d48a;
+}
+.cell-unknown {
+  background: var(--border);
+  color: var(--text);
+}
+.score-trend-chart {
+  height: 200px;
+}
+
+/* A-indicator table */
+.indicator-table td {
+  vertical-align: top;
+}
+.indicator-hint {
+  font-size: 11px;
+  color: var(--text);
+  font-weight: 400;
+  margin-top: 2px;
+}
+.source-tag {
+  font-size: 11px;
+  color: var(--text);
+  font-weight: 400;
+}
+.indicator-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  display: inline-block;
+}
+.indicator-badge.up {
+  color: var(--up);
+  background: rgba(46, 139, 87, 0.12);
+}
+.indicator-badge.down {
+  color: var(--down);
+  background: rgba(192, 57, 43, 0.12);
+}
+.indicator-badge.neutral {
+  color: var(--text);
+  background: var(--bg);
+}
+.tristate-buttons {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.tristate-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+}
+.tristate-btn.active.up {
+  background: var(--up);
+  border-color: var(--up);
+  color: #fff;
+}
+.tristate-btn.active.down {
+  background: var(--down);
+  border-color: var(--down);
+  color: #fff;
+}
+.tristate-btn.active.neutral {
+  background: #b8860b;
+  border-color: #b8860b;
+  color: #fff;
+}
+.indicator-numeric-input {
+  font: inherit;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-h);
+  width: 160px;
+  max-width: 100%;
+}
+.ewy-note {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ewy-note label {
+  font-size: 13px;
+  color: var(--text);
+}
+.ewy-note textarea {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-h);
+  resize: vertical;
+}
