@@ -53,7 +53,16 @@ export function AssetSwitcher({ assets, activeId, onSelect, onAddPreset, onAddCu
               <p className="section-sub">라방에서 운용 중인 자산 (분할매수 계획 포함):</p>
               <div className="preset-list">
                 {availablePresets.map((p) => (
-                  <button key={p.id} type="button" className="preset-btn" onClick={() => onAddPreset(p)}>
+                  <button
+                    key={p.id}
+                    type="button"
+                    className="preset-btn"
+                    onClick={() => {
+                      onAddPreset(p);
+                      // 직접 추가와 동작을 맞춘다 — 추가하면 그 자산으로 넘어가므로 패널은 닫는다.
+                      setAdding(false);
+                    }}
+                  >
                     + {p.name}
                   </button>
                 ))}
