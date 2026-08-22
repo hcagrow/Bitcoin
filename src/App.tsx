@@ -10,6 +10,7 @@ import { RealDemandCard } from "./components/RealDemandCard";
 import { ScoreTrendChart } from "./components/ScoreTrendChart";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { SummaryCard } from "./components/SummaryCard";
+import { SynthesisCard } from "./components/SynthesisCard";
 import { TradeLedgerPanel } from "./components/TradeLedgerPanel";
 import { TradePlanPanel } from "./components/TradePlanPanel";
 import { TradeProgressCard } from "./components/TradeProgressCard";
@@ -28,6 +29,7 @@ import {
 } from "./lib/entryStore";
 import { buildIndicatorSeries, findCrosses, latestCrossState } from "./lib/indicators";
 import { evaluateRealDemand } from "./lib/realDemand";
+import { synthesize } from "./lib/synthesis";
 import { computeTradeStats } from "./lib/tradeLedger";
 import { getZone, loadZones, saveZones } from "./lib/zones";
 import type {
@@ -136,6 +138,19 @@ export default function App() {
     [price, ma50, ma200, series, crossState, etfEntries, derivEntries, manualIndicators],
   );
   const indicatorTotals = useMemo(() => summarizeIndicators(indicatorResults), [indicatorResults]);
+
+  const synthesis = useMemo(
+    () =>
+      synthesize({
+        zone: currentZone,
+        zones,
+        price,
+        aScoreTotal: indicatorTotals.total,
+        aScoreScored: indicatorTotals.scored,
+        realDemand,
+      }),
+    [currentZone, zones, price, indicatorTotals, realDemand],
+  );
 
   useEffect(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -257,6 +272,13 @@ export default function App() {
           설정
         </button>
       </header>
+
+      <SynthesisCard
+        result={synthesis}
+        aScoreTotal={indicatorTotals.total}
+        aScoreScored={indicatorTotals.scored}
+        realDemandVerdict={realDemand.verdict}
+      />
 
       {loading && !series && <div className="status-msg">불러오는 중…</div>}
       {error && <div className="status-msg error">오류: {error}</div>}

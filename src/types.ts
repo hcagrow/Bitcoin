@@ -103,3 +103,17 @@ export interface DailyScoreSnapshot {
   date: string; // ISO date, one snapshot per day
   total: number;
 }
+
+export type ToneBucket = "긍정" | "경계" | "중립";
+
+export interface SynthesisResult {
+  headline: string;
+  zoneTone: ZoneTone | null;
+  zoneLabel: string | null;
+  scoreTone: ToneBucket;
+  confidence: string;
+  mismatch: boolean;
+  mismatchDetail: string | null;
+  nextCheck: string;
+  cycleSummary: string;
+}
