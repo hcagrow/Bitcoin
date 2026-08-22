@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AIndicatorPanel } from "./components/AIndicatorPanel";
 import { AIndicatorSummaryCard } from "./components/AIndicatorSummaryCard";
 import { AlertsPanel } from "./components/AlertsPanel";
+import { AssetSwitcher } from "./components/AssetSwitcher";
+import { LadderPanel } from "./components/LadderPanel";
+import { ManualPricePanel } from "./components/ManualPricePanel";
 import { DerivativesPanel } from "./components/DerivativesPanel";
 import { EtfFlowPanel } from "./components/EtfFlowPanel";
 import { IndicatorHeatmap } from "./components/IndicatorHeatmap";
@@ -17,6 +20,14 @@ import { TradePlanPanel } from "./components/TradePlanPanel";
 import { TradeProgressCard } from "./components/TradeProgressCard";
 import { ZoneGauge } from "./components/ZoneGauge";
 import { computeIndicators, summarizeIndicators } from "./lib/aIndicators";
+import {
+  BTC_ASSET_ID,
+  loadActiveAssetId,
+  loadAssets,
+  newCustomAsset,
+  saveActiveAssetId,
+  saveAssets,
+} from "./lib/assets";
 import { fetchCurrentPrice, fetchDailyCandles } from "./lib/binance";
 import {
   loadEntries,
@@ -37,6 +48,8 @@ import { computeTradeStats } from "./lib/tradeLedger";
 import { getZone, loadZones, saveZones } from "./lib/zones";
 import type {
   AlertLogEntry,
+  Asset,
+  LadderPlan,
   DailyScoreSnapshot,
   DerivativesEntry,
   EtfFlowEntry,
@@ -67,7 +80,13 @@ const RANGE_OPTIONS = [
 ];
 
 export default function App() {
-  const [zones, setZones] = useState<Zone[]>(() => loadZones());
+  const [assets, setAssets] = useState<Asset[]>(() => loadAssets());
+  const [activeAssetId, setActiveAssetId] = useState<string>(() => loadActiveAssetId());
+  const activeAsset = assets.find((a) => a.id === activeAssetId) ?? assets[0];
+  const isBtc = activeAsset.id === BTC_ASSET_ID;
+  const binanceSymbol = activeAsset.source.kind === "binance" ? activeAsset.source.symbol : null;
+
+  const [zones, setZones] = useState<Zone[]>(() => loadZones(loadActiveAssetId()));
   const [series, setSeries] = useState<IndicatorSeries | null>(null);
   const [livePrice, setLivePrice] = useState<number | null>(null);
   const [change24h, setChange24h] = useState<number | null>(null);
@@ -95,6 +114,12 @@ export default function App() {
     () => typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches === true,
   );
 
+  // 자산을 바꾸면 그 자산의 기준선 세트로 갈아끼운다.
+  useEffect(() => {
+    setZones(loadZones(activeAssetId));
+    saveActiveAssetId(activeAssetId);
+  }, [activeAssetId]);
+
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const onChange = (e: MediaQueryListEvent) => setIsDark(e.matches);
@@ -103,13 +128,26 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // 수동 입력 자산은 부를 API가 없으므로 이전 자산의 시세가 남지 않도록 비우고 끝낸다.
+    if (binanceSymbol === null) {
+      setSeries(null);
+      setLivePrice(null);
+      setChange24h(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
 
-    async function load() {
+    async function load(symbol: string) {
       setLoading(true);
       setError(null);
       try {
-        const [candles, current] = await Promise.all([fetchDailyCandles(1000), fetchCurrentPrice()]);
+        const [candles, current] = await Promise.all([
+          fetchDailyCandles(symbol, 1000),
+          fetchCurrentPrice(symbol),
+        ]);
         if (cancelled) return;
         setSeries(buildIndicatorSeries(candles));
         setLivePrice(current.price);
@@ -121,18 +159,21 @@ export default function App() {
       }
     }
 
-    load();
-    const interval = setInterval(load, 5 * 60 * 1000);
+    load(binanceSymbol);
+    const interval = setInterval(() => load(binanceSymbol), 5 * 60 * 1000);
     return () => {
       cancelled = true;
       clearInterval(interval);
     };
-  }, []);
+  }, [binanceSymbol]);
 
   const crosses = useMemo(() => (series ? findCrosses(series) : []), [series]);
   const crossState = useMemo(() => latestCrossState(crosses), [crosses]);
 
-  const price = livePrice ?? (series ? series.close[series.close.length - 1] : null);
+  const price =
+    binanceSymbol !== null
+      ? livePrice ?? (series ? series.close[series.close.length - 1] : null)
+      : activeAsset.manualPrice ?? null;
   const ma50 = series ? series.ma50[series.ma50.length - 1] : null;
   const ma200 = series ? series.ma200[series.ma200.length - 1] : null;
   const ma50w = series ? series.ma50w[series.ma50w.length - 1] : null;
@@ -217,7 +258,43 @@ export default function App() {
 
   function handleSaveZones(next: Zone[]) {
     setZones(next);
-    saveZones(next);
+    saveZones(activeAssetId, next);
+  }
+
+  function updateAsset(id: string, patch: Partial<Asset>) {
+    setAssets((prev) => {
+      const next = prev.map((a) => (a.id === id ? { ...a, ...patch } : a));
+      saveAssets(next);
+      return next;
+    });
+  }
+
+  function handleAddAsset(asset: Asset) {
+    setAssets((prev) => {
+      if (prev.some((a) => a.id === asset.id)) return prev;
+      const next = [...prev, asset];
+      saveAssets(next);
+      return next;
+    });
+    setActiveAssetId(asset.id);
+  }
+
+  function handleRemoveAsset(id: string) {
+    if (id === BTC_ASSET_ID) return; // BTC 전용 분석 패널들이 매달려 있어 삭제 불가
+    setAssets((prev) => {
+      const next = prev.filter((a) => a.id !== id);
+      saveAssets(next);
+      return next;
+    });
+    setActiveAssetId((cur) => (cur === id ? BTC_ASSET_ID : cur));
+  }
+
+  function handleSaveManualPrice(price: number) {
+    updateAsset(activeAssetId, { manualPrice: price, manualPriceUpdatedAt: new Date().toISOString() });
+  }
+
+  function handleSaveLadder(plan: LadderPlan) {
+    updateAsset(activeAssetId, { ladder: plan });
   }
 
   function handleAddEtfEntry(entry: EtfFlowEntry) {
@@ -326,21 +403,52 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <h1>BTC 기준선 대시보드</h1>
+        <h1>기준선 대시보드</h1>
         <button type="button" className="settings-btn" onClick={() => setSettingsOpen(true)}>
           설정
         </button>
       </header>
 
-      <SynthesisCard
-        result={synthesis}
-        aScoreTotal={indicatorTotals.total}
-        aScoreScored={indicatorTotals.scored}
-        realDemandVerdict={realDemand.verdict}
+      <AssetSwitcher
+        assets={assets}
+        activeId={activeAssetId}
+        onSelect={setActiveAssetId}
+        onAddPreset={handleAddAsset}
+        onAddCustom={(name, currency) => handleAddAsset(newCustomAsset(name, currency))}
+        onRemove={handleRemoveAsset}
       />
 
-      {loading && !series && <div className="status-msg">불러오는 중…</div>}
+      {isBtc && (
+        <SynthesisCard
+          result={synthesis}
+          aScoreTotal={indicatorTotals.total}
+          aScoreScored={indicatorTotals.scored}
+          realDemandVerdict={realDemand.verdict}
+        />
+      )}
+
+      {binanceSymbol === null && (
+        <ManualPricePanel key={activeAsset.id} asset={activeAsset} onSave={handleSaveManualPrice} />
+      )}
+
+      {loading && !series && binanceSymbol !== null && <div className="status-msg">불러오는 중…</div>}
       {error && <div className="status-msg error">오류: {error}</div>}
+
+      {binanceSymbol === null && price != null && zones.length > 0 && (
+        <section className="section">
+          <h2>구간 게이지</h2>
+          <ZoneGauge zones={zones} price={price} />
+        </section>
+      )}
+
+      {binanceSymbol === null && zones.length === 0 && (
+        <section className="section">
+          <h2>구간 게이지</h2>
+          <p className="section-sub">
+            이 자산의 기준선이 아직 없습니다. 우측 상단 "설정"에서 가격 구간을 입력하세요.
+          </p>
+        </section>
+      )}
 
       {series && price != null && (
         <>
@@ -395,8 +503,13 @@ export default function App() {
         </>
       )}
 
-      <RealDemandCard result={realDemand} />
+      <section className="section">
+        <LadderPanel key={activeAsset.id} asset={activeAsset} price={price} onSave={handleSaveLadder} />
+      </section>
 
+      {isBtc && <RealDemandCard result={realDemand} />}
+
+      {isBtc && (
       <section className="section">
         <h2>반자동 데이터 입력</h2>
         <p className="section-sub">
@@ -405,9 +518,11 @@ export default function App() {
         <EtfFlowPanel entries={etfEntries} onAdd={handleAddEtfEntry} onDelete={handleDeleteEtfEntry} />
         <DerivativesPanel entries={derivEntries} onAdd={handleAddDerivEntry} onDelete={handleDeleteDerivEntry} />
       </section>
+      )}
 
-      <AIndicatorSummaryCard totals={indicatorTotals} />
+      {isBtc && <AIndicatorSummaryCard totals={indicatorTotals} />}
 
+      {isBtc && (
       <section className="section">
         <h2>A지표 종합 시각화</h2>
         <div className="ai-viz-grid">
@@ -423,7 +538,9 @@ export default function App() {
         <h3>종합 점수 추세</h3>
         <ScoreTrendChart snapshots={scoreHistory} />
       </section>
+      )}
 
+      {isBtc && (
       <section className="section">
         <AIndicatorPanel
           results={indicatorResults}
@@ -434,14 +551,23 @@ export default function App() {
           onSetEwyNote={handleSetEwyNote}
         />
       </section>
+      )}
 
-      <TradeProgressCard stats={tradeStats} />
+      {isBtc && <TradeProgressCard stats={tradeStats} />}
 
+      {isBtc && (
       <section className="section">
         <h2>매매 장부</h2>
         <TradePlanPanel plan={tradePlan} history={tradePlanHistory} onSave={handleSaveTradePlan} />
         <TradeLedgerPanel entries={tradeEntries} onAdd={handleAddTradeEntry} onDelete={handleDeleteTradeEntry} />
       </section>
+      )}
+
+      {!isBtc && (
+        <p className="section-sub" style={{ textAlign: "center" }}>
+          A지표 · 실수요 판정 · 매매 장부는 비트코인 분석 프레임이라 BTC 탭에서만 표시됩니다.
+        </p>
+      )}
 
       <p className="disclaimer">
         이 대시보드는 예측을 제공하지 않습니다. 미리 정한 기준선과 조건 대비 현재 상태만 계산해 보여주며,

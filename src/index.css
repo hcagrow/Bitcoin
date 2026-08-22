@@ -849,3 +849,102 @@ button {
   height: 400px;
   margin-top: 8px;
 }
+
+/* Asset switcher */
+.asset-switcher {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.asset-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.asset-tab {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 14px;
+  color: var(--text);
+  font-size: 13px;
+}
+.asset-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #1a1200;
+  font-weight: 600;
+}
+.asset-tab.add {
+  border-style: dashed;
+}
+.asset-add-panel {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+.preset-list {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.preset-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  color: var(--text-h);
+  font-size: 12px;
+}
+.asset-add-panel .entry-form select {
+  font: inherit;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-h);
+}
+.asset-remove-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+/* Manual price card */
+.manual-price-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+/* Ladder panel */
+.ladder-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+.ladder-summary {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-h);
+  margin-bottom: 12px;
+}
+.ladder-gap-note {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text);
+}
+.ladder-warning {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(184, 134, 11, 0.12);
+  border: 1px solid rgba(184, 134, 11, 0.35);
+  font-size: 12px;
+  color: var(--text-h);
+}

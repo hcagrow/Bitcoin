@@ -149,3 +149,53 @@ export interface AlertLogEntry {
   boundaryPrice: number;
   price: number;
 }
+
+/**
+ * Where an asset's price comes from. Binance covers crypto automatically;
+ * everything else (US ETFs, 국내 주식) has no free no-auth browser-callable
+ * source, so those are entered by hand.
+ */
+export type PriceSource =
+  | { kind: "binance"; symbol: string } // e.g. "BTCUSDT"
+  | { kind: "manual" };
+
+export interface Asset {
+  id: string;
+  name: string;
+  /** 화면에 붙는 통화 기호 — 달러 자산은 "$", 국내 주식은 "₩". */
+  currency: string;
+  source: PriceSource;
+  /** manual 소스일 때 사용자가 직접 넣는 현재가. */
+  manualPrice?: number;
+  manualPriceUpdatedAt?: string;
+  ladder?: LadderPlan;
+}
+
+/**
+ * 분할매수 계획. 라방 형식 그대로:
+ * "SPY 2X: 720 → 660 달러 / 매 10달러 마다 3%씩 (현재 4% / 총 25%)"
+ */
+export interface LadderPlan {
+  startPrice: number; // 매수를 시작하는 가격 (720)
+  endPrice: number; // 끝까지 내려갔을 때의 가격 (660)
+  stepPrice: number; // 매 단계 간격 (10)
+  pctPerStep: number; // 단계마다 넣는 비중 % (3)
+  currentPct: number; // 지금까지 실제로 채운 비중 % (4)
+  totalPct: number; // 계획상 최대 비중 % (25)
+}
+
+export interface LadderStatus {
+  /** 현재가 기준으로 발동됐어야 할 단계 수. */
+  triggeredSteps: number;
+  totalSteps: number;
+  /** 발동 단계까지 누적됐어야 할 목표 비중 %. totalPct를 넘지 않는다. */
+  targetPct: number;
+  currentPct: number;
+  /** 목표 - 현재. 양수면 아직 덜 샀다는 뜻. */
+  gapPct: number;
+  /** 다음 단계가 발동되는 가격. 이미 끝까지 내려왔으면 null. */
+  nextTriggerPrice: number | null;
+  /** 단계수 x 단계당 비중. 계획의 totalPct와 어긋나면 입력값이 잘못된 것이다. */
+  plannedTotalPct: number;
+  state: "시작 전" | "진행 중" | "계획 완료";
+}
