@@ -60,10 +60,12 @@ const EWY_NOTE_KEY = "btc-app-ewy-note-v1";
 const SCORE_HISTORY_KEY = "btc-app-score-history-v1";
 const ALERT_LOG_KEY = "btc-app-alert-log-v1";
 
+// CoinGecko 무료 API는 과거 데이터를 최근 365일까지만 제공하므로(초과 요청 시 HTTP 401),
+// "2년" 옵션은 제공할 수 없습니다.
 const RANGE_OPTIONS = [
   { label: "4개월", days: 120 },
-  { label: "1년", days: 365 },
-  { label: "2년", days: 730 },
+  { label: "6개월", days: 180 },
+  { label: "1년(최대)", days: 365 },
 ];
 
 export default function App() {
@@ -98,7 +100,7 @@ export default function App() {
       setLoading(true);
       setError(null);
       try {
-        const [points, current] = await Promise.all([fetchDailyPrices(400), fetchCurrentPrice()]);
+        const [points, current] = await Promise.all([fetchDailyPrices(365), fetchCurrentPrice()]);
         if (cancelled) return;
         setSeries(buildIndicatorSeries(points));
         setLivePrice(current.price);

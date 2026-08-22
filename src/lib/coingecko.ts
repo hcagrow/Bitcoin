@@ -33,9 +33,11 @@ function writeCache(days: number, points: PricePoint[]): void {
 
 /**
  * Fetches daily BTC close prices from CoinGecko (free, no auth).
- * `days` should cover enough history for a 200-day MA (>= 250 recommended).
+ * CoinGecko's free public API caps historical lookback at 365 days — requesting
+ * more returns HTTP 401 (error_code 10012). 365 still covers the 200-day MA with
+ * room to spare, so keep this at or below 365.
  */
-export async function fetchDailyPrices(days = 400): Promise<PricePoint[]> {
+export async function fetchDailyPrices(days = 365): Promise<PricePoint[]> {
   const cached = readCache(days);
   if (cached) return cached;
 
