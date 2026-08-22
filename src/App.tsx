@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AIndicatorPanel } from "./components/AIndicatorPanel";
 import { AIndicatorSummaryCard } from "./components/AIndicatorSummaryCard";
+import { AlertsPanel } from "./components/AlertsPanel";
 import { DerivativesPanel } from "./components/DerivativesPanel";
 import { EtfFlowPanel } from "./components/EtfFlowPanel";
 import { IndicatorHeatmap } from "./components/IndicatorHeatmap";
@@ -27,12 +28,15 @@ import {
   saveObject,
   upsertByDate,
 } from "./lib/entryStore";
+import { findNearbyBoundaries } from "./lib/boundaryAlerts";
 import { buildIndicatorSeries, findCrosses, latestCrossState } from "./lib/indicators";
+import { getNotificationPermission, requestNotificationPermission, sendLocalNotification } from "./lib/notifications";
 import { evaluateRealDemand } from "./lib/realDemand";
 import { synthesize } from "./lib/synthesis";
 import { computeTradeStats } from "./lib/tradeLedger";
 import { getZone, loadZones, saveZones } from "./lib/zones";
 import type {
+  AlertLogEntry,
   DailyScoreSnapshot,
   DerivativesEntry,
   EtfFlowEntry,
@@ -54,6 +58,7 @@ const DEFAULT_TRADE_PLAN: TradePlan = { holdingsQty: 0, targetSellRatioPct: 0 };
 const MANUAL_INDICATORS_KEY = "btc-app-manual-indicators-v1";
 const EWY_NOTE_KEY = "btc-app-ewy-note-v1";
 const SCORE_HISTORY_KEY = "btc-app-score-history-v1";
+const ALERT_LOG_KEY = "btc-app-alert-log-v1";
 
 const RANGE_OPTIONS = [
   { label: "4개월", days: 120 },
@@ -82,6 +87,9 @@ export default function App() {
   );
   const [ewyNote, setEwyNote] = useState<string>(() => loadObject(EWY_NOTE_KEY, ""));
   const [scoreHistory, setScoreHistory] = useState<DailyScoreSnapshot[]>(() => loadEntries(SCORE_HISTORY_KEY));
+  const [notificationPermission, setNotificationPermission] = useState(() => getNotificationPermission());
+  const [alertLog, setAlertLog] = useState<AlertLogEntry[]>(() => loadEntries(ALERT_LOG_KEY));
+  const previouslyNearKeys = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -162,6 +170,36 @@ export default function App() {
       return next;
     });
   }, [indicatorTotals.total]);
+
+  const nearbyBoundaries = useMemo(() => (price != null ? findNearbyBoundaries(zones, price) : []), [zones, price]);
+
+  useEffect(() => {
+    if (price == null) return;
+    const currentKeys = new Set(nearbyBoundaries.map((b) => b.key));
+    const newlyEntered = nearbyBoundaries.filter((b) => !previouslyNearKeys.current.has(b.key));
+    previouslyNearKeys.current = currentKeys;
+    if (newlyEntered.length === 0) return;
+
+    setAlertLog((prev) => {
+      const timestamp = new Date().toISOString();
+      const entries: AlertLogEntry[] = newlyEntered.map((b) => ({
+        timestamp,
+        zoneLabel: b.zoneLabel,
+        boundaryPrice: b.boundaryPrice,
+        price,
+      }));
+      const next = [...prev, ...entries];
+      saveEntries(ALERT_LOG_KEY, next);
+      return next;
+    });
+
+    for (const b of newlyEntered) {
+      sendLocalNotification(
+        "기준선 접근 알림",
+        `가격이 '${b.zoneLabel}' 경계(${b.boundaryPrice.toLocaleString()}달러)에서 ${b.distancePct.toFixed(1)}% 이내로 접근했습니다.`,
+      );
+    }
+  }, [nearbyBoundaries, price]);
 
   function handleSaveZones(next: Zone[]) {
     setZones(next);
@@ -264,6 +302,11 @@ export default function App() {
     saveObject(EWY_NOTE_KEY, note);
   }
 
+  async function handleRequestNotificationPermission() {
+    const result = await requestNotificationPermission();
+    setNotificationPermission(result);
+  }
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -297,6 +340,15 @@ export default function App() {
           <section className="section">
             <h2>구간 게이지</h2>
             <ZoneGauge zones={zones} price={price} />
+          </section>
+
+          <section className="section">
+            <AlertsPanel
+              permission={notificationPermission}
+              onRequestPermission={handleRequestNotificationPermission}
+              nearby={nearbyBoundaries}
+              alertLog={alertLog}
+            />
           </section>
 
           <section className="section">

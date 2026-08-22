@@ -117,3 +117,19 @@ export interface SynthesisResult {
   nextCheck: string;
   cycleSummary: string;
 }
+
+export interface BoundaryProximity {
+  key: string; // `${zoneId}:${boundaryType}` — stable key for de-duping alerts
+  zoneId: string;
+  zoneLabel: string;
+  boundaryPrice: number;
+  boundaryType: "min" | "max";
+  distancePct: number; // absolute distance from price, in %
+}
+
+export interface AlertLogEntry {
+  timestamp: string; // ISO datetime
+  zoneLabel: string;
+  boundaryPrice: number;
+  price: number;
+}
