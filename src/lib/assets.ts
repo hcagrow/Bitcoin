@@ -54,6 +54,7 @@ export const PRESET_ASSETS: Asset[] = [
   },
   { id: "xau", name: "XAU (금)", currency: "$", source: { kind: "manual" } },
   { id: "copper", name: "COPPER (구리)", currency: "$", source: { kind: "manual" } },
+  { id: "hynix", name: "SK하이닉스", currency: "₩", source: { kind: "manual" } },
 ];
 
 export function loadAssets(): Asset[] {
