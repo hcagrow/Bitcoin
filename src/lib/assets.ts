@@ -14,42 +14,46 @@ export const DEFAULT_ASSETS: Asset[] = [
 /**
  * 라방이 실제로 운용하는 자산들. "추가" 버튼에서 한 번에 넣을 수 있게 미리 정의해둔다.
  * 분할매수 계획 수치는 2026-08-21/22 시황 기준 예시값이며, 앱에서 수정 가능하다.
- * 미국 ETF·상품은 브라우저에서 바로 부를 수 있는 무료·무인증 API가 없어 수동 가격 입력이다.
+ *
+ * SPY/QQQ/SOXX/EWY/EWJ는 전부 미국 거래소 상장 티커라 Finnhub 무료 티어로 자동 조회된다
+ * (사용자가 설정에서 본인 키를 넣어야 동작 — lib/finnhub.ts 참고). XAU(금)·COPPER(구리)는
+ * 원자재라 무료 티어 지원 여부가 불확실해 보류했고, 국내 주식(하이닉스)은 Finnhub 무료 티어가
+ * 한국거래소를 지원하지 않는 것을 stock-api-check.html로 실제 확인해 수동 입력으로 남겨뒀다.
  */
 export const PRESET_ASSETS: Asset[] = [
   {
     id: "spy2x",
     name: "SPY 2X",
     currency: "$",
-    source: { kind: "manual" },
+    source: { kind: "finnhub", symbol: "SPY" },
     ladder: { startPrice: 720, endPrice: 660, stepPrice: 10, pctPerStep: 3, currentPct: 4, totalPct: 25 },
   },
   {
     id: "qqq",
     name: "QQQ",
     currency: "$",
-    source: { kind: "manual" },
+    source: { kind: "finnhub", symbol: "QQQ" },
     ladder: { startPrice: 680, endPrice: 590, stepPrice: 10, pctPerStep: 1, currentPct: 2, totalPct: 10 },
   },
   {
     id: "soxl",
     name: "SOXL (가격은 SOXX 기준)",
     currency: "$",
-    source: { kind: "manual" },
+    source: { kind: "finnhub", symbol: "SOXX" },
     ladder: { startPrice: 490, endPrice: 400, stepPrice: 10, pctPerStep: 0.5, currentPct: 1.5, totalPct: 5 },
   },
   {
     id: "ewy",
     name: "EWY",
     currency: "$",
-    source: { kind: "manual" },
+    source: { kind: "finnhub", symbol: "EWY" },
     ladder: { startPrice: 165, endPrice: 135, stepPrice: 5, pctPerStep: 1, currentPct: 5, totalPct: 7 },
   },
   {
     id: "ewj",
     name: "EWJ",
     currency: "$",
-    source: { kind: "manual" },
+    source: { kind: "finnhub", symbol: "EWJ" },
     ladder: { startPrice: 90, endPrice: 86, stepPrice: 2, pctPerStep: 1, currentPct: 1, totalPct: 3 },
   },
   { id: "xau", name: "XAU (금)", currency: "$", source: { kind: "manual" } },

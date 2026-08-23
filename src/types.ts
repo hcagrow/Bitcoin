@@ -151,12 +151,16 @@ export interface AlertLogEntry {
 }
 
 /**
- * Where an asset's price comes from. Binance covers crypto automatically;
- * everything else (US ETFs, 국내 주식) has no free no-auth browser-callable
+ * Where an asset's price comes from. Binance covers crypto automatically.
+ * Finnhub covers US-listed stocks/ETFs automatically, but only with a
+ * user-supplied API key (never committed — see lib/finnhub.ts) and only
+ * current price, not historical candles, since that needs a paid tier.
+ * Everything else (국내 주식 등) has no free no-auth browser-callable
  * source, so those are entered by hand.
  */
 export type PriceSource =
   | { kind: "binance"; symbol: string } // e.g. "BTCUSDT"
+  | { kind: "finnhub"; symbol: string } // e.g. "QQQ" — US-listed only
   | { kind: "manual" };
 
 export interface Asset {

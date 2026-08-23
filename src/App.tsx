@@ -3,6 +3,7 @@ import { AIndicatorPanel } from "./components/AIndicatorPanel";
 import { AIndicatorSummaryCard } from "./components/AIndicatorSummaryCard";
 import { AlertsPanel } from "./components/AlertsPanel";
 import { AssetSwitcher } from "./components/AssetSwitcher";
+import { FinnhubPricePanel } from "./components/FinnhubPricePanel";
 import { LadderPanel } from "./components/LadderPanel";
 import { ManualPricePanel } from "./components/ManualPricePanel";
 import { DerivativesPanel } from "./components/DerivativesPanel";
@@ -29,6 +30,7 @@ import {
   saveAssets,
 } from "./lib/assets";
 import { fetchCurrentPrice, fetchDailyCandles } from "./lib/binance";
+import { fetchFinnhubQuote, loadFinnhubApiKey, saveFinnhubApiKey } from "./lib/finnhub";
 import {
   loadEntries,
   loadObject,
@@ -84,7 +86,11 @@ export default function App() {
   const [activeAssetId, setActiveAssetId] = useState<string>(() => loadActiveAssetId());
   const activeAsset = assets.find((a) => a.id === activeAssetId) ?? assets[0];
   const isBtc = activeAsset.id === BTC_ASSET_ID;
-  const binanceSymbol = activeAsset.source.kind === "binance" ? activeAsset.source.symbol : null;
+  const sourceKind = activeAsset.source.kind;
+  const binanceSymbol = sourceKind === "binance" ? activeAsset.source.symbol : null;
+  const finnhubSymbol = sourceKind === "finnhub" ? activeAsset.source.symbol : null;
+  // binance는 캔들 히스토리까지 주지만 finnhub 무료 티어는 현재가만 준다 — 캔들차트는 binance 전용.
+  const hasCandles = sourceKind === "binance";
 
   const [zones, setZones] = useState<Zone[]>(() => loadZones(loadActiveAssetId()));
   const [series, setSeries] = useState<IndicatorSeries | null>(null);
@@ -93,6 +99,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [finnhubApiKey, setFinnhubApiKey] = useState<string>(() => loadFinnhubApiKey());
   const [rangeDays, setRangeDays] = useState(365);
   const [etfEntries, setEtfEntries] = useState<EtfFlowEntry[]>(() => loadEntries(ETF_STORAGE_KEY));
   const [derivEntries, setDerivEntries] = useState<DerivativesEntry[]>(() => loadEntries(DERIV_STORAGE_KEY));
@@ -129,7 +136,7 @@ export default function App() {
 
   useEffect(() => {
     // 수동 입력 자산은 부를 API가 없으므로 이전 자산의 시세가 남지 않도록 비우고 끝낸다.
-    if (binanceSymbol === null) {
+    if (binanceSymbol === null && finnhubSymbol === null) {
       setSeries(null);
       setLivePrice(null);
       setChange24h(null);
@@ -140,7 +147,7 @@ export default function App() {
 
     let cancelled = false;
 
-    async function load(symbol: string) {
+    async function loadBinance(symbol: string) {
       setLoading(true);
       setError(null);
       try {
@@ -159,13 +166,39 @@ export default function App() {
       }
     }
 
-    load(binanceSymbol);
-    const interval = setInterval(() => load(binanceSymbol), 5 * 60 * 1000);
+    // Finnhub 무료 티어는 현재가만 주고 과거 캔들은 유료 전용이라 series는 비워둔다.
+    async function loadFinnhub(symbol: string) {
+      setSeries(null);
+      setLoading(true);
+      setError(null);
+      try {
+        const current = await fetchFinnhubQuote(symbol);
+        if (cancelled) return;
+        setLivePrice(current.price);
+        setChange24h(current.change24h);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "데이터를 불러오지 못했습니다");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    if (binanceSymbol !== null) {
+      loadBinance(binanceSymbol);
+      const interval = setInterval(() => loadBinance(binanceSymbol), 5 * 60 * 1000);
+      return () => {
+        cancelled = true;
+        clearInterval(interval);
+      };
+    }
+
+    loadFinnhub(finnhubSymbol as string);
+    const interval = setInterval(() => loadFinnhub(finnhubSymbol as string), 60 * 1000);
     return () => {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [binanceSymbol]);
+  }, [binanceSymbol, finnhubSymbol, finnhubApiKey]);
 
   const crosses = useMemo(() => (series ? findCrosses(series) : []), [series]);
   const crossState = useMemo(() => latestCrossState(crosses), [crosses]);
@@ -173,7 +206,9 @@ export default function App() {
   const price =
     binanceSymbol !== null
       ? livePrice ?? (series ? series.close[series.close.length - 1] : null)
-      : activeAsset.manualPrice ?? null;
+      : finnhubSymbol !== null
+        ? livePrice
+        : activeAsset.manualPrice ?? null;
   const ma50 = series ? series.ma50[series.ma50.length - 1] : null;
   const ma200 = series ? series.ma200[series.ma200.length - 1] : null;
   const ma50w = series ? series.ma50w[series.ma50w.length - 1] : null;
@@ -291,6 +326,11 @@ export default function App() {
 
   function handleSaveManualPrice(price: number) {
     updateAsset(activeAssetId, { manualPrice: price, manualPriceUpdatedAt: new Date().toISOString() });
+  }
+
+  function handleSaveFinnhubApiKey(key: string) {
+    saveFinnhubApiKey(key);
+    setFinnhubApiKey(key.trim());
   }
 
   function handleSaveLadder(plan: LadderPlan) {
@@ -427,21 +467,31 @@ export default function App() {
         />
       )}
 
-      {binanceSymbol === null && (
+      {sourceKind === "manual" && (
         <ManualPricePanel key={activeAsset.id} asset={activeAsset} onSave={handleSaveManualPrice} />
       )}
 
-      {loading && !series && binanceSymbol !== null && <div className="status-msg">불러오는 중…</div>}
+      {sourceKind === "finnhub" && (
+        <FinnhubPricePanel
+          key={activeAsset.id}
+          asset={activeAsset}
+          price={price}
+          change24h={change24h}
+          hasApiKey={finnhubApiKey !== ""}
+        />
+      )}
+
+      {loading && !series && sourceKind !== "manual" && <div className="status-msg">불러오는 중…</div>}
       {error && <div className="status-msg error">오류: {error}</div>}
 
-      {binanceSymbol === null && price != null && zones.length > 0 && (
+      {!hasCandles && price != null && zones.length > 0 && (
         <section className="section">
           <h2>구간 게이지</h2>
           <ZoneGauge zones={zones} price={price} />
         </section>
       )}
 
-      {binanceSymbol === null && zones.length === 0 && (
+      {!hasCandles && zones.length === 0 && (
         <section className="section">
           <h2>구간 게이지</h2>
           <p className="section-sub">
@@ -575,7 +625,13 @@ export default function App() {
       </p>
 
       {settingsOpen && (
-        <SettingsPanel zones={zones} onSave={handleSaveZones} onClose={() => setSettingsOpen(false)} />
+        <SettingsPanel
+          zones={zones}
+          onSave={handleSaveZones}
+          onClose={() => setSettingsOpen(false)}
+          finnhubApiKey={finnhubApiKey}
+          onSaveFinnhubApiKey={handleSaveFinnhubApiKey}
+        />
       )}
     </div>
   );
