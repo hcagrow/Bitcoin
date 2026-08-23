@@ -107,6 +107,10 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [finnhubApiKey, setFinnhubApiKey] = useState<string>(() => loadFinnhubApiKey());
   const [chartInterval, setChartInterval] = useState("1d");
+  const [showMa, setShowMa] = useState(true);
+  const [showBmsb, setShowBmsb] = useState(true);
+  const [showRsi, setShowRsi] = useState(true);
+  const [showCrossMarkers, setShowCrossMarkers] = useState(true);
   const [weeklySeries, setWeeklySeries] = useState<IndicatorSeries | null>(null);
   const [minuteSeries, setMinuteSeries] = useState<IndicatorSeries | null>(null);
   const [etfEntries, setEtfEntries] = useState<EtfFlowEntry[]>(() => loadEntries(ETF_STORAGE_KEY));
@@ -596,6 +600,24 @@ export default function App() {
                 ))}
               </div>
             </div>
+            <div className="range-buttons overlay-toggles">
+              <button type="button" className={showMa ? "active" : ""} onClick={() => setShowMa((v) => !v)}>
+                이평선
+              </button>
+              <button type="button" className={showBmsb ? "active" : ""} onClick={() => setShowBmsb((v) => !v)}>
+                불마켓밴드
+              </button>
+              <button type="button" className={showRsi ? "active" : ""} onClick={() => setShowRsi((v) => !v)}>
+                RSI
+              </button>
+              <button
+                type="button"
+                className={showCrossMarkers ? "active" : ""}
+                onClick={() => setShowCrossMarkers((v) => !v)}
+              >
+                크로스마커
+              </button>
+            </div>
             {chartInterval === "1m" && (
               <p className="section-sub">
                 불마켓밴드는 20/21분 SMA·EMA로 부를 근거가 없어 1분 봉에는 표시하지 않습니다. 화면을
@@ -614,6 +636,10 @@ export default function App() {
               minuteSeries={minuteSeries}
               interval={chartInterval}
               crosses={chartCrosses}
+              showMa={showMa}
+              showBmsb={showBmsb}
+              showRsi={showRsi}
+              showCrossMarkers={showCrossMarkers}
               realizedPrice={manualIndicators.realizedPrice?.rawValue}
               balancedPrice={manualIndicators.balancedPrice?.rawValue}
               isDark={isDark}

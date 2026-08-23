@@ -129,6 +129,17 @@ button {
   border-color: var(--accent);
   color: #1a1200;
 }
+.overlay-toggles {
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.overlay-toggles button {
+  font-size: 12px;
+  opacity: 0.55;
+}
+.overlay-toggles button.active {
+  opacity: 1;
+}
 
 /* Summary card */
 .summary-card {
