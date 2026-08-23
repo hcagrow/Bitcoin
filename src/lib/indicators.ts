@@ -87,24 +87,50 @@ export function buildIndicatorSeries(candles: Candle[]): IndicatorSeries {
 }
 
 /**
- * 주봉 캔들 전용 지표 시리즈. buildIndicatorSeries와 같은 필드 구조를 쓰지만,
- * 봉 자체가 이미 주 단위라 기간 상수를 일봉용(50/200/350/140/147일)이 아니라
- * 주봉용(50/200/20/21주)으로 바꿔 계산한다. ma50w는 ma50과 값이 겹쳐서 안 쓴다
- * (CandleChart가 interval="1w"일 때 세 번째 이평선을 그리지 않는 이유).
+ * buildIndicatorSeries와 같은 필드 구조를 다른 봉 단위에 맞는 기간 상수로 채운다.
+ * ma50w는 일봉 전용 세 번째 이평선이라 다른 봉에선 항상 비워둔다. bmsbSma/bmsbEma도
+ * 기간을 안 주면 비워지는데, CandleChart의 밴드 그리기 코드가 null 값을 만나면
+ * 그 지점을 건너뛰므로(불마켓밴드 없음) 별도 분기 없이 자연스럽게 밴드가 안 그려진다.
  */
-export function buildWeeklyIndicatorSeries(candles: Candle[]): IndicatorSeries {
+function buildBarIndicatorSeries(
+  candles: Candle[],
+  periods: { ma1: number; ma2: number; bmsbSma?: number; bmsbEma?: number; rsi?: number },
+): IndicatorSeries {
   const close = candles.map((c) => c.close);
+  const nulls = new Array<number | null>(close.length).fill(null);
   return {
     dates: candles.map((c) => c.date),
     candles,
     close,
-    ma50: sma(close, WEEKLY_MA_SHORT_PERIOD),
-    ma200: sma(close, WEEKLY_MA_LONG_PERIOD),
-    ma50w: new Array(close.length).fill(null),
-    bmsbSma: sma(close, WEEKLY_BMSB_SMA_PERIOD),
-    bmsbEma: ema(close, WEEKLY_BMSB_EMA_PERIOD),
-    rsi14: rsi(close),
+    ma50: sma(close, periods.ma1),
+    ma200: sma(close, periods.ma2),
+    ma50w: nulls,
+    bmsbSma: periods.bmsbSma != null ? sma(close, periods.bmsbSma) : nulls,
+    bmsbEma: periods.bmsbEma != null ? ema(close, periods.bmsbEma) : nulls,
+    rsi14: rsi(close, periods.rsi ?? RSI_PERIOD),
   };
+}
+
+/**
+ * 주봉 캔들 전용 지표 시리즈. 봉 자체가 이미 주 단위라 기간 상수를 일봉용
+ * (50/200/350/140/147일)이 아니라 주봉용(50/200/20/21주)으로 바꿔 계산한다.
+ */
+export function buildWeeklyIndicatorSeries(candles: Candle[]): IndicatorSeries {
+  return buildBarIndicatorSeries(candles, {
+    ma1: WEEKLY_MA_SHORT_PERIOD,
+    ma2: WEEKLY_MA_LONG_PERIOD,
+    bmsbSma: WEEKLY_BMSB_SMA_PERIOD,
+    bmsbEma: WEEKLY_BMSB_EMA_PERIOD,
+  });
+}
+
+/**
+ * 분봉 캔들 전용 지표 시리즈. 50/200분 이평선과 RSI(14, 분)는 그대로 계산되지만,
+ * 불마켓밴드는 뺐다 — 20분/21분 SMA·EMA로 "불마켓밴드"라고 부를 근거가 어디에도
+ * 없어서, 그렇게 하면 근거 없는 수치를 지표인 것처럼 보여주게 된다.
+ */
+export function buildMinuteIndicatorSeries(candles: Candle[]): IndicatorSeries {
+  return buildBarIndicatorSeries(candles, { ma1: 50, ma2: 200 });
 }
 
 export function findCrosses(series: IndicatorSeries): CrossEvent[] {
