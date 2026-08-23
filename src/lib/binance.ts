@@ -5,7 +5,6 @@ import type { Candle } from "../types";
 const HOSTS = ["https://api.binance.com", "https://data-api.binance.vision"];
 
 const CANDLE_CACHE_KEY = "btc-app-candle-cache-v1";
-const CANDLE_CACHE_TTL_MS = 5 * 60 * 1000;
 const PRICE_CACHE_KEY = "btc-app-binance-price-cache-v1";
 const PRICE_CACHE_TTL_MS = 30 * 1000;
 
@@ -16,7 +15,15 @@ interface CandleCache {
   fetchedAt: number;
   limit: number;
   symbol: string;
+  interval: string;
   candles: Candle[];
+}
+
+/** 봉 단위가 짧을수록 캐시를 짧게 둬야 "실시간"이라는 말이 무색해지지 않는다. */
+function candleCacheTtlMs(interval: string): number {
+  if (interval === "1m") return 30 * 1000;
+  if (interval === "1h") return 2 * 60 * 1000;
+  return 5 * 60 * 1000; // 1d, 1w
 }
 
 interface PriceCache {
@@ -64,18 +71,22 @@ async function fetchJson<T>(path: string): Promise<T> {
 }
 
 /**
- * Fetches daily OHLC candles from Binance (free, no auth).
- * 1000 is the endpoint's max per request — enough for the 50-week (350-day) MA
- * plus a full two-year chart window, which CoinGecko's free tier cannot supply.
+ * Fetches OHLC candles from Binance (free, no auth) at the given bar interval
+ * ("1m" | "1h" | "1d" | "1w" — anything Binance's klines endpoint accepts).
+ * 1000 is the endpoint's max per request, so shorter intervals cover a shorter
+ * span of history (1000 one-minute bars is under a day; 1000 daily bars is
+ * ~2.7 years).
  */
-export async function fetchDailyCandles(symbol: string, limit = 1000): Promise<Candle[]> {
-  const cacheKey = `${CANDLE_CACHE_KEY}:${symbol}`;
-  const cached = readCache<CandleCache>(cacheKey, CANDLE_CACHE_TTL_MS);
-  if (cached && cached.limit === limit && cached.symbol === symbol) return cached.candles;
+export async function fetchCandles(symbol: string, interval: string, limit = 1000): Promise<Candle[]> {
+  const cacheKey = `${CANDLE_CACHE_KEY}:${symbol}:${interval}`;
+  const cached = readCache<CandleCache>(cacheKey, candleCacheTtlMs(interval));
+  if (cached && cached.limit === limit && cached.symbol === symbol && cached.interval === interval) {
+    return cached.candles;
+  }
 
-  const rows = await fetchJson<RawKline[]>(`/api/v3/klines?symbol=${symbol}&interval=1d&limit=${limit}`);
+  const rows = await fetchJson<RawKline[]>(`/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`);
   const candles: Candle[] = rows.map((r) => ({
-    date: new Date(r[0]).toISOString().slice(0, 10),
+    date: new Date(r[0]).toISOString(),
     open: Number(r[1]),
     high: Number(r[2]),
     low: Number(r[3]),
@@ -83,8 +94,13 @@ export async function fetchDailyCandles(symbol: string, limit = 1000): Promise<C
     volume: Number(r[5]),
   }));
 
-  writeCache(cacheKey, { fetchedAt: Date.now(), limit, symbol, candles } satisfies CandleCache);
+  writeCache(cacheKey, { fetchedAt: Date.now(), limit, symbol, interval, candles } satisfies CandleCache);
   return candles;
+}
+
+/** 지표(50/200/50주 이평선·불마켓밴드·RSI) 계산은 전부 일봉 기준이라 이 래퍼로 고정해 부른다. */
+export async function fetchDailyCandles(symbol: string, limit = 1000): Promise<Candle[]> {
+  return fetchCandles(symbol, "1d", limit);
 }
 
 export async function fetchCurrentPrice(symbol: string): Promise<{ price: number; change24h: number }> {

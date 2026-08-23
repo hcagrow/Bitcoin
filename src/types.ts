@@ -14,7 +14,8 @@ export interface PricePoint {
 }
 
 export interface Candle {
-  date: string; // ISO date (day granularity)
+  /** Full ISO datetime — day-granularity for 1d/1w candles, minute-level for intraday. */
+  date: string;
   open: number;
   high: number;
   low: number;
