@@ -14,7 +14,7 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import { useEffect, useRef } from "react";
-import type { Candle, CrossEvent, IndicatorSeries } from "../types";
+import type { CrossEvent, IndicatorSeries } from "../types";
 import { BandSeries, type BandData } from "./bandSeries";
 
 const COLORS = {
@@ -48,16 +48,17 @@ function flatLine(dates: string[], value: number): LineData<Time>[] {
   return dates.map((d) => ({ time: toTime(d), value }));
 }
 
+const INTERVAL_LABEL: Record<string, string> = { "1d": "일", "1w": "주", "1m": "분" };
+
 interface Props {
   /** 일봉 지표 시리즈 — interval="1d"일 때 쓴다. */
   series: IndicatorSeries;
   /** 주봉 지표 시리즈 — interval="1w"일 때 쓴다. 아직 안 받아왔으면 null. */
   weeklySeries: IndicatorSeries | null;
-  /** "1d"/"1w"면 이평선·불마켓밴드·RSI·크로스마커를 그린다. "1m"은 일봉 기준
-   *  계산이 그대로 안 맞아서 캔들만 보여준다. */
+  /** 분봉 지표 시리즈 — interval="1m"일 때 쓴다. 불마켓밴드는 근거가 없어서 빠져 있다
+   *  (buildMinuteIndicatorSeries 참고). 아직 안 받아왔으면 null. */
+  minuteSeries: IndicatorSeries | null;
   interval: string;
-  /** interval이 "1m"일 때 받아온 분봉 캔들. */
-  intradayCandles: Candle[] | null;
   crosses: CrossEvent[];
   realizedPrice?: number;
   balancedPrice?: number;
@@ -67,16 +68,17 @@ interface Props {
 export function CandleChart({
   series,
   weeklySeries,
+  minuteSeries,
   interval,
-  intradayCandles,
   crosses,
   realizedPrice,
   balancedPrice,
   isDark,
 }: Props) {
-  const isWeekly = interval === "1w";
-  const activeSeries = interval === "1d" ? series : isWeekly ? weeklySeries : null;
+  const activeSeries =
+    interval === "1d" ? series : interval === "1w" ? weeklySeries : interval === "1m" ? minuteSeries : null;
   const showIndicators = activeSeries !== null;
+  const intervalLabel = INTERVAL_LABEL[interval] ?? "";
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -129,10 +131,10 @@ export function CandleChart({
       return s;
     };
 
-    // 1일/1주 봉이면 그 봉 단위로 계산해둔 지표 시리즈를 쓰고, 1분 봉은 지표 없이 캔들만
-    // 쓴다 — 50일선 같은 지표는 일/주봉 기준 계산이라 분봉에 얹으면 값 자체가 잘못된다.
-    const dates = activeSeries ? activeSeries.dates : (intradayCandles ?? []).map((c) => c.date);
-    const candles = activeSeries ? activeSeries.candles : (intradayCandles ?? []);
+    // activeSeries가 null인 건 아직 그 봉 단위 데이터를 못 받아온 순간뿐이다 — 빈 캔들로
+    // 렌더링해두면 데이터가 도착하는 대로(같은 effect가 다시 돌면서) 채워진다.
+    const dates = activeSeries ? activeSeries.dates : [];
+    const candles = activeSeries ? activeSeries.candles : [];
 
     let bandSeries: ISeriesApi<"Custom"> | null = null;
     if (activeSeries) {
@@ -186,7 +188,7 @@ export function CandleChart({
           color: COLORS.ma50,
           lineWidth: 1,
           priceLineVisible: false,
-          title: isWeekly ? "50주" : "50일",
+          title: `50${intervalLabel}`,
         }),
       );
       ma50.setData(lineData(dates, activeSeries.ma50));
@@ -196,13 +198,13 @@ export function CandleChart({
           color: COLORS.ma200,
           lineWidth: 2,
           priceLineVisible: false,
-          title: isWeekly ? "200주" : "200일",
+          title: `200${intervalLabel}`,
         }),
       );
       ma200.setData(lineData(dates, activeSeries.ma200));
 
-      // 주봉 뷰에서 ma50은 이미 "50주"라 여기 또 50주선을 얹으면 값이 겹친다 — 일봉 뷰에서만 그린다.
-      if (!isWeekly) {
+      // 다른 봉 뷰에선 ma50이 이미 그 봉 단위 "50X"라 여기 또 50주선을 얹으면 겹친다 — 일봉에서만 그린다.
+      if (interval === "1d") {
         const ma50w = add(
           chart.addSeries(LineSeries, { color: COLORS.ma50w, lineWidth: 2, priceLineVisible: false, title: "50주" }),
         );
@@ -247,7 +249,12 @@ export function CandleChart({
       // RSI 서브차트 (pane 1)
       rsiSeries = chart.addSeries(
         LineSeries,
-        { color: COLORS.rsi, lineWidth: 1, priceLineVisible: false, title: isWeekly ? "RSI(14, 주)" : "RSI(14)" },
+        {
+          color: COLORS.rsi,
+          lineWidth: 1,
+          priceLineVisible: false,
+          title: interval === "1d" ? "RSI(14)" : `RSI(14, ${intervalLabel})`,
+        },
         1,
       );
       rsiSeries.setData(lineData(dates, activeSeries.rsi14));
@@ -279,7 +286,7 @@ export function CandleChart({
       if (bandSeries) chart.removeSeries(bandSeries);
       if (rsiSeries) chart.removeSeries(rsiSeries);
     };
-  }, [activeSeries, isWeekly, intradayCandles, crosses, realizedPrice, balancedPrice, isDark, showIndicators]);
+  }, [activeSeries, interval, intervalLabel, crosses, realizedPrice, balancedPrice, isDark, showIndicators]);
 
   return <div className="candle-chart" ref={containerRef} />;
 }

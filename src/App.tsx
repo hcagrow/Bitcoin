@@ -42,7 +42,13 @@ import {
   upsertByDate,
 } from "./lib/entryStore";
 import { findNearbyBoundaries } from "./lib/boundaryAlerts";
-import { buildIndicatorSeries, buildWeeklyIndicatorSeries, findCrosses, latestCrossState } from "./lib/indicators";
+import {
+  buildIndicatorSeries,
+  buildMinuteIndicatorSeries,
+  buildWeeklyIndicatorSeries,
+  findCrosses,
+  latestCrossState,
+} from "./lib/indicators";
 import { getNotificationPermission, requestNotificationPermission, sendLocalNotification } from "./lib/notifications";
 import { evaluateRealDemand } from "./lib/realDemand";
 import { synthesize } from "./lib/synthesis";
@@ -51,7 +57,6 @@ import { getZone, loadZones, saveZones } from "./lib/zones";
 import type {
   AlertLogEntry,
   Asset,
-  Candle,
   LadderPlan,
   DailyScoreSnapshot,
   DerivativesEntry,
@@ -102,8 +107,8 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [finnhubApiKey, setFinnhubApiKey] = useState<string>(() => loadFinnhubApiKey());
   const [chartInterval, setChartInterval] = useState("1d");
-  const [intradayCandles, setIntradayCandles] = useState<Candle[] | null>(null);
   const [weeklySeries, setWeeklySeries] = useState<IndicatorSeries | null>(null);
+  const [minuteSeries, setMinuteSeries] = useState<IndicatorSeries | null>(null);
   const [etfEntries, setEtfEntries] = useState<EtfFlowEntry[]>(() => loadEntries(ETF_STORAGE_KEY));
   const [derivEntries, setDerivEntries] = useState<DerivativesEntry[]>(() => loadEntries(DERIV_STORAGE_KEY));
   const [tradePlan, setTradePlan] = useState<TradePlan>(() => loadObject(TRADE_PLAN_KEY, DEFAULT_TRADE_PLAN));
@@ -203,13 +208,14 @@ export default function App() {
     };
   }, [binanceSymbol, finnhubSymbol, finnhubApiKey]);
 
-  // 차트 봉 단위 — "1일"이면 위 effect가 이미 받아온 series를 그대로 쓴다. "1주"는 지표까지
-  // 다시 계산해서 쓰고("50주"·"200주"·불마켓밴드 20/21주·RSI가 전부 주봉 네이티브 계산이라
-  // 일봉 기반 근사보다 오히려 정확하다), "1분"은 지표 없이 캔들만 받는다 (CandleChart 참고).
+  // 차트 봉 단위 — "1일"이면 위 effect가 이미 받아온 series를 그대로 쓴다. "1주"/"1분"은
+  // 각자 그 봉 단위로 지표를 다시 계산해서 쓴다("50주"·"200주"·"50분"·"200분"이 전부 그 봉
+  // 네이티브 계산이라 일봉 기반 근사보다 정확하다). 불마켓밴드는 1주에만 있다 — 20/21분
+  // SMA·EMA로 부를 근거가 없어서 1분에는 빼뒀다 (indicators.ts 참고).
   useEffect(() => {
     if (binanceSymbol === null || chartInterval === "1d") {
-      setIntradayCandles(null);
       setWeeklySeries(null);
+      setMinuteSeries(null);
       return;
     }
 
@@ -220,9 +226,9 @@ export default function App() {
         if (cancelled) return;
         if (chartInterval === "1w") {
           setWeeklySeries(buildWeeklyIndicatorSeries(candles));
-          setIntradayCandles(null);
+          setMinuteSeries(null);
         } else {
-          setIntradayCandles(candles);
+          setMinuteSeries(buildMinuteIndicatorSeries(candles));
           setWeeklySeries(null);
         }
       } catch (e) {
@@ -243,11 +249,12 @@ export default function App() {
   // 바꾼다고 이 판정까지 같이 흔들리면 안 된다.
   const crosses = useMemo(() => (series ? findCrosses(series) : []), [series]);
   const crossState = useMemo(() => latestCrossState(crosses), [crosses]);
-  // 캔들차트에 그릴 크로스 마커만 현재 봉 단위(1일/1주)를 따라간다.
+  // 캔들차트에 그릴 크로스 마커만 현재 봉 단위를 따라간다.
   const chartCrosses = useMemo(() => {
-    const activeSeries = chartInterval === "1d" ? series : chartInterval === "1w" ? weeklySeries : null;
+    const activeSeries =
+      chartInterval === "1d" ? series : chartInterval === "1w" ? weeklySeries : minuteSeries;
     return activeSeries ? findCrosses(activeSeries) : [];
-  }, [series, weeklySeries, chartInterval]);
+  }, [series, weeklySeries, minuteSeries, chartInterval]);
 
   const price =
     binanceSymbol !== null
@@ -574,7 +581,7 @@ export default function App() {
           <section className="section">
             <div className="section-header-row">
               <h2>
-                가격 차트{chartInterval === "1m" ? " (캔들)" : " (캔들 + 이평선 + 불마켓밴드 + RSI)"}
+                가격 차트{chartInterval === "1m" ? " (캔들 + 이평선 + RSI)" : " (캔들 + 이평선 + 불마켓밴드 + RSI)"}
               </h2>
               <div className="range-buttons">
                 {INTERVAL_OPTIONS.map((opt) => (
@@ -591,18 +598,21 @@ export default function App() {
             </div>
             {chartInterval === "1m" && (
               <p className="section-sub">
-                50일선·200일선·50주선·불마켓밴드·RSI는 전부 일/주봉 기준 계산이라 1분 봉에는 표시하지
-                않습니다. 화면을 드래그하거나 두 손가락으로 확대·축소해 원하는 구간을 보세요.
+                불마켓밴드는 20/21분 SMA·EMA로 부를 근거가 없어 1분 봉에는 표시하지 않습니다. 화면을
+                드래그하거나 두 손가락으로 확대·축소해 원하는 구간을 보세요.
               </p>
             )}
             {chartInterval === "1w" && weeklySeries == null && (
               <p className="status-msg">주봉 데이터 불러오는 중…</p>
             )}
+            {chartInterval === "1m" && minuteSeries == null && (
+              <p className="status-msg">분봉 데이터 불러오는 중…</p>
+            )}
             <CandleChart
               series={series}
               weeklySeries={weeklySeries}
+              minuteSeries={minuteSeries}
               interval={chartInterval}
-              intradayCandles={intradayCandles}
               crosses={chartCrosses}
               realizedPrice={manualIndicators.realizedPrice?.rawValue}
               balancedPrice={manualIndicators.balancedPrice?.rawValue}
