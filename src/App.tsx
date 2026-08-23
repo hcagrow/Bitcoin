@@ -29,7 +29,7 @@ import {
   saveActiveAssetId,
   saveAssets,
 } from "./lib/assets";
-import { fetchCurrentPrice, fetchDailyCandles } from "./lib/binance";
+import { fetchCandles, fetchCurrentPrice, fetchDailyCandles } from "./lib/binance";
 import { fetchFinnhubQuote, loadFinnhubApiKey, saveFinnhubApiKey } from "./lib/finnhub";
 import {
   loadEntries,
@@ -51,6 +51,7 @@ import { getZone, loadZones, saveZones } from "./lib/zones";
 import type {
   AlertLogEntry,
   Asset,
+  Candle,
   LadderPlan,
   DailyScoreSnapshot,
   DerivativesEntry,
@@ -75,10 +76,10 @@ const EWY_NOTE_KEY = "btc-app-ewy-note-v1";
 const SCORE_HISTORY_KEY = "btc-app-score-history-v1";
 const ALERT_LOG_KEY = "btc-app-alert-log-v1";
 
-const RANGE_OPTIONS = [
-  { label: "4개월", days: 120 },
-  { label: "1년", days: 365 },
-  { label: "2년", days: 730 },
+const INTERVAL_OPTIONS = [
+  { label: "1분", value: "1m" },
+  { label: "1일", value: "1d" },
+  { label: "1주", value: "1w" },
 ];
 
 export default function App() {
@@ -100,7 +101,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [finnhubApiKey, setFinnhubApiKey] = useState<string>(() => loadFinnhubApiKey());
-  const [rangeDays, setRangeDays] = useState(365);
+  const [chartInterval, setChartInterval] = useState("1d");
+  const [intradayCandles, setIntradayCandles] = useState<Candle[] | null>(null);
   const [etfEntries, setEtfEntries] = useState<EtfFlowEntry[]>(() => loadEntries(ETF_STORAGE_KEY));
   const [derivEntries, setDerivEntries] = useState<DerivativesEntry[]>(() => loadEntries(DERIV_STORAGE_KEY));
   const [tradePlan, setTradePlan] = useState<TradePlan>(() => loadObject(TRADE_PLAN_KEY, DEFAULT_TRADE_PLAN));
@@ -199,6 +201,33 @@ export default function App() {
       clearInterval(interval);
     };
   }, [binanceSymbol, finnhubSymbol, finnhubApiKey]);
+
+  // 차트 봉 단위 — "1일"이면 위 effect가 이미 받아온 series를 그대로 쓰고, 다른 봉 단위만
+  // 따로 받아온다. 50일선 등 지표는 일봉 전용이라 이 캔들에는 얹지 않는다 (CandleChart 참고).
+  useEffect(() => {
+    if (binanceSymbol === null || chartInterval === "1d") {
+      setIntradayCandles(null);
+      return;
+    }
+
+    let cancelled = false;
+    async function load(symbol: string) {
+      try {
+        const candles = await fetchCandles(symbol, chartInterval, 1000);
+        if (!cancelled) setIntradayCandles(candles);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "차트 데이터를 불러오지 못했습니다");
+      }
+    }
+
+    load(binanceSymbol);
+    const pollMs = chartInterval === "1m" ? 30 * 1000 : 5 * 60 * 1000;
+    const pollId = setInterval(() => load(binanceSymbol), pollMs);
+    return () => {
+      cancelled = true;
+      clearInterval(pollId);
+    };
+  }, [binanceSymbol, chartInterval]);
 
   const crosses = useMemo(() => (series ? findCrosses(series) : []), [series]);
   const crossState = useMemo(() => latestCrossState(crosses), [crosses]);
@@ -527,23 +556,32 @@ export default function App() {
 
           <section className="section">
             <div className="section-header-row">
-              <h2>가격 차트 (캔들 + 이평선 + 불마켓밴드 + RSI)</h2>
+              <h2>
+                가격 차트{chartInterval === "1d" ? " (캔들 + 이평선 + 불마켓밴드 + RSI)" : " (캔들)"}
+              </h2>
               <div className="range-buttons">
-                {RANGE_OPTIONS.map((opt) => (
+                {INTERVAL_OPTIONS.map((opt) => (
                   <button
-                    key={opt.days}
+                    key={opt.value}
                     type="button"
-                    className={rangeDays === opt.days ? "active" : ""}
-                    onClick={() => setRangeDays(opt.days)}
+                    className={chartInterval === opt.value ? "active" : ""}
+                    onClick={() => setChartInterval(opt.value)}
                   >
                     {opt.label}
                   </button>
                 ))}
               </div>
             </div>
+            {chartInterval !== "1d" && (
+              <p className="section-sub">
+                50일선·200일선·50주선·불마켓밴드·RSI는 전부 일봉 기준 계산이라 이 봉 단위에는 표시하지
+                않습니다. 화면을 드래그하거나 두 손가락으로 확대·축소해 원하는 구간을 보세요.
+              </p>
+            )}
             <CandleChart
               series={series}
-              rangeDays={rangeDays}
+              interval={chartInterval}
+              intradayCandles={intradayCandles}
               crosses={crosses}
               realizedPrice={manualIndicators.realizedPrice?.rawValue}
               balancedPrice={manualIndicators.balancedPrice?.rawValue}
