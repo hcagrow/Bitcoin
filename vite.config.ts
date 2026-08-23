@@ -10,8 +10,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'icons/favicon-16.png', 'icons/favicon-32.png'],
       manifest: {
-        name: 'BTC 기준선 대시보드',
-        short_name: '기준선 대시보드',
+        name: '가늠자 · BTC 기준선 대시보드',
+        short_name: '가늠자',
         description: '비트코인/멀티자산 기준선 기반 분석 대시보드 — 매매를 추천하지 않고 현재 구간과 다음 확인 지점만 보여줍니다.',
         lang: 'ko',
         start_url: '/Bitcoin/',
