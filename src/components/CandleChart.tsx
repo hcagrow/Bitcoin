@@ -49,11 +49,14 @@ function flatLine(dates: string[], value: number): LineData<Time>[] {
 }
 
 interface Props {
+  /** 일봉 지표 시리즈 — interval="1d"일 때 쓴다. */
   series: IndicatorSeries;
-  /** "1d"면 기존 지표(이평선·불마켓밴드·RSI·크로스마커)를 그대로 그린다. 그 외 봉 단위는
-   *  전부 일봉 기준 계산이라 의미가 없으므로 캔들만 보여준다. */
+  /** 주봉 지표 시리즈 — interval="1w"일 때 쓴다. 아직 안 받아왔으면 null. */
+  weeklySeries: IndicatorSeries | null;
+  /** "1d"/"1w"면 이평선·불마켓밴드·RSI·크로스마커를 그린다. "1m"은 일봉 기준
+   *  계산이 그대로 안 맞아서 캔들만 보여준다. */
   interval: string;
-  /** interval이 "1d"가 아닐 때 그 봉 단위로 새로 받아온 캔들. */
+  /** interval이 "1m"일 때 받아온 분봉 캔들. */
   intradayCandles: Candle[] | null;
   crosses: CrossEvent[];
   realizedPrice?: number;
@@ -63,6 +66,7 @@ interface Props {
 
 export function CandleChart({
   series,
+  weeklySeries,
   interval,
   intradayCandles,
   crosses,
@@ -70,7 +74,9 @@ export function CandleChart({
   balancedPrice,
   isDark,
 }: Props) {
-  const showIndicators = interval === "1d";
+  const isWeekly = interval === "1w";
+  const activeSeries = interval === "1d" ? series : isWeekly ? weeklySeries : null;
+  const showIndicators = activeSeries !== null;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -123,18 +129,18 @@ export function CandleChart({
       return s;
     };
 
-    // 1일 봉이면 서버가 이미 채워둔 지표 시리즈를 쓰고, 그 외 봉 단위는 별도로 받아온
-    // 캔들만 쓴다 — 50일선 같은 지표는 일봉 기준 계산이라 다른 봉에 얹으면 값 자체가 잘못됐다.
-    const dates = showIndicators ? series.dates : (intradayCandles ?? []).map((c) => c.date);
-    const candles = showIndicators ? series.candles : (intradayCandles ?? []);
+    // 1일/1주 봉이면 그 봉 단위로 계산해둔 지표 시리즈를 쓰고, 1분 봉은 지표 없이 캔들만
+    // 쓴다 — 50일선 같은 지표는 일/주봉 기준 계산이라 분봉에 얹으면 값 자체가 잘못된다.
+    const dates = activeSeries ? activeSeries.dates : (intradayCandles ?? []).map((c) => c.date);
+    const candles = activeSeries ? activeSeries.candles : (intradayCandles ?? []);
 
     let bandSeries: ISeriesApi<"Custom"> | null = null;
-    if (showIndicators) {
+    if (activeSeries) {
       // 불마켓밴드: 20주 SMA와 21주 EMA 사이를 채운 밴드 (라방 차트의 갈색 띠).
       const bandData: BandData[] = [];
       for (let i = 0; i < dates.length; i++) {
-        const a = series.bmsbSma[i];
-        const b = series.bmsbEma[i];
+        const a = activeSeries.bmsbSma[i];
+        const b = activeSeries.bmsbEma[i];
         if (a == null || b == null) continue;
         bandData.push({ time: toTime(dates[i]), upper: Math.max(a, b), lower: Math.min(a, b) });
       }
@@ -174,21 +180,34 @@ export function CandleChart({
     let markerApi: ISeriesMarkersPluginApi<Time> | null = null;
     let rsiSeries: ISeriesApi<"Line"> | null = null;
 
-    if (showIndicators) {
+    if (activeSeries) {
       const ma50 = add(
-        chart.addSeries(LineSeries, { color: COLORS.ma50, lineWidth: 1, priceLineVisible: false, title: "50일" }),
+        chart.addSeries(LineSeries, {
+          color: COLORS.ma50,
+          lineWidth: 1,
+          priceLineVisible: false,
+          title: isWeekly ? "50주" : "50일",
+        }),
       );
-      ma50.setData(lineData(dates, series.ma50));
+      ma50.setData(lineData(dates, activeSeries.ma50));
 
       const ma200 = add(
-        chart.addSeries(LineSeries, { color: COLORS.ma200, lineWidth: 2, priceLineVisible: false, title: "200일" }),
+        chart.addSeries(LineSeries, {
+          color: COLORS.ma200,
+          lineWidth: 2,
+          priceLineVisible: false,
+          title: isWeekly ? "200주" : "200일",
+        }),
       );
-      ma200.setData(lineData(dates, series.ma200));
+      ma200.setData(lineData(dates, activeSeries.ma200));
 
-      const ma50w = add(
-        chart.addSeries(LineSeries, { color: COLORS.ma50w, lineWidth: 2, priceLineVisible: false, title: "50주" }),
-      );
-      ma50w.setData(lineData(dates, series.ma50w));
+      // 주봉 뷰에서 ma50은 이미 "50주"라 여기 또 50주선을 얹으면 값이 겹친다 — 일봉 뷰에서만 그린다.
+      if (!isWeekly) {
+        const ma50w = add(
+          chart.addSeries(LineSeries, { color: COLORS.ma50w, lineWidth: 2, priceLineVisible: false, title: "50주" }),
+        );
+        ma50w.setData(lineData(dates, activeSeries.ma50w));
+      }
 
       if (realizedPrice != null) {
         const s = add(
@@ -228,10 +247,10 @@ export function CandleChart({
       // RSI 서브차트 (pane 1)
       rsiSeries = chart.addSeries(
         LineSeries,
-        { color: COLORS.rsi, lineWidth: 1, priceLineVisible: false, title: "RSI(14)" },
+        { color: COLORS.rsi, lineWidth: 1, priceLineVisible: false, title: isWeekly ? "RSI(14, 주)" : "RSI(14)" },
         1,
       );
-      rsiSeries.setData(lineData(dates, series.rsi14));
+      rsiSeries.setData(lineData(dates, activeSeries.rsi14));
       // 과매수 70 / 과매도 30 기준선
       for (const level of [70, 30]) {
         rsiSeries.createPriceLine({
@@ -260,7 +279,7 @@ export function CandleChart({
       if (bandSeries) chart.removeSeries(bandSeries);
       if (rsiSeries) chart.removeSeries(rsiSeries);
     };
-  }, [series, interval, intradayCandles, crosses, realizedPrice, balancedPrice, isDark, showIndicators]);
+  }, [activeSeries, isWeekly, intradayCandles, crosses, realizedPrice, balancedPrice, isDark, showIndicators]);
 
   return <div className="candle-chart" ref={containerRef} />;
 }

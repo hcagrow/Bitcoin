@@ -7,6 +7,14 @@ export const BMSB_SMA_PERIOD = 140;
 export const BMSB_EMA_PERIOD = 147;
 export const RSI_PERIOD = 14;
 
+// 주봉 데이터는 봉 자체가 이미 "1주"이므로 일봉처럼 ×7 환산할 필요가 없다 —
+// 불마켓밴드는 원래 정의 그대로 20주/21주 봉을 바로 쓰는 게 표준이라, 오히려
+// 일봉 기반(140/147일) 근사보다 이쪽이 더 정확하다.
+export const WEEKLY_MA_SHORT_PERIOD = 50; // 50주선
+export const WEEKLY_MA_LONG_PERIOD = 200; // 200주선 — 비트코인 장기 사이클을 볼 때 자주 쓰는 그 지표
+export const WEEKLY_BMSB_SMA_PERIOD = 20;
+export const WEEKLY_BMSB_EMA_PERIOD = 21;
+
 export function sma(values: number[], period: number): (number | null)[] {
   const out: (number | null)[] = new Array(values.length).fill(null);
   let sum = 0;
@@ -74,6 +82,27 @@ export function buildIndicatorSeries(candles: Candle[]): IndicatorSeries {
     ma50w: sma(close, MA_50W_PERIOD),
     bmsbSma: sma(close, BMSB_SMA_PERIOD),
     bmsbEma: ema(close, BMSB_EMA_PERIOD),
+    rsi14: rsi(close),
+  };
+}
+
+/**
+ * 주봉 캔들 전용 지표 시리즈. buildIndicatorSeries와 같은 필드 구조를 쓰지만,
+ * 봉 자체가 이미 주 단위라 기간 상수를 일봉용(50/200/350/140/147일)이 아니라
+ * 주봉용(50/200/20/21주)으로 바꿔 계산한다. ma50w는 ma50과 값이 겹쳐서 안 쓴다
+ * (CandleChart가 interval="1w"일 때 세 번째 이평선을 그리지 않는 이유).
+ */
+export function buildWeeklyIndicatorSeries(candles: Candle[]): IndicatorSeries {
+  const close = candles.map((c) => c.close);
+  return {
+    dates: candles.map((c) => c.date),
+    candles,
+    close,
+    ma50: sma(close, WEEKLY_MA_SHORT_PERIOD),
+    ma200: sma(close, WEEKLY_MA_LONG_PERIOD),
+    ma50w: new Array(close.length).fill(null),
+    bmsbSma: sma(close, WEEKLY_BMSB_SMA_PERIOD),
+    bmsbEma: ema(close, WEEKLY_BMSB_EMA_PERIOD),
     rsi14: rsi(close),
   };
 }
