@@ -403,7 +403,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <h1>기준선 대시보드</h1>
+        <h1>가늠자</h1>
         <button type="button" className="settings-btn" onClick={() => setSettingsOpen(true)}>
           설정
         </button>
