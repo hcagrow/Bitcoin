@@ -7,12 +7,15 @@ interface Props {
   zones: Zone[];
   onSave: (zones: Zone[]) => void;
   onClose: () => void;
+  finnhubApiKey: string;
+  onSaveFinnhubApiKey: (key: string) => void;
 }
 
-export function SettingsPanel({ zones, onSave, onClose }: Props) {
+export function SettingsPanel({ zones, onSave, onClose, finnhubApiKey, onSaveFinnhubApiKey }: Props) {
   const [draft, setDraft] = useState<Zone[]>(() =>
     zones.map((z) => ({ ...z, max: Number.isFinite(z.max) ? z.max : Infinity })),
   );
+  const [keyDraft, setKeyDraft] = useState(finnhubApiKey);
 
   function updateZone(id: string, patch: Partial<Zone>) {
     setDraft((prev) => prev.map((z) => (z.id === id ? { ...z, ...patch } : z)));
@@ -39,6 +42,27 @@ export function SettingsPanel({ zones, onSave, onClose }: Props) {
   return (
     <div className="settings-overlay" role="dialog" aria-label="기준선 설정">
       <div className="settings-panel">
+        <h2>Finnhub API 키</h2>
+        <p className="settings-note">
+          QQQ·SOXL·EWY·EWJ·SPY 2X 같은 미국 상장 종목을 자동으로 조회하려면 무료 Finnhub 키가 필요합니다.{" "}
+          <a href="https://finnhub.io/register" target="_blank" rel="noreferrer">
+            무료 발급
+          </a>
+          . 이 키는 본인 브라우저에만 저장되고 어디로도 전송되지 않습니다.
+        </p>
+        <div className="settings-row">
+          <input
+            type="text"
+            value={keyDraft}
+            onChange={(e) => setKeyDraft(e.target.value)}
+            placeholder="Finnhub API 키"
+            aria-label="Finnhub API 키"
+          />
+          <button type="button" className="primary" onClick={() => onSaveFinnhubApiKey(keyDraft)}>
+            키 저장
+          </button>
+        </div>
+
         <h2>기준선 설정</h2>
         <p className="settings-note">
           가격 구간(기준선)을 직접 수정할 수 있습니다. 한번 세운 기준은 감정적으로 자주 바꾸지 않는 것을
