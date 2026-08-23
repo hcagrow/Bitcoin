@@ -14,6 +14,32 @@
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
 
     <title>가늠자 · BTC 기준선 대시보드</title>
+    <script>
+      // 새 배포로 옛 해시 파일이 서버에서 사라진 뒤, 아직 옛 서비스워커가 페이지를
+      // 물고 있는 상태로 접속하면 진입 스크립트가 404가 나 화면이 백지로 남는다.
+      // 그 경우를 잡아 세션당 한 번만 캐시를 우회해 새로 고친다(무한루프 방지).
+      (function () {
+        var key = "gamnja-reload-on-asset-error";
+        window.addEventListener(
+          "error",
+          function (e) {
+            var t = e.target;
+            if (!t || (t.tagName !== "SCRIPT" && t.tagName !== "LINK")) return;
+            var src = t.src || t.href || "";
+            if (src.indexOf("/assets/") === -1) return;
+            if (sessionStorage.getItem(key)) return;
+            sessionStorage.setItem(key, "1");
+            window.location.reload();
+          },
+          true,
+        );
+        window.addEventListener("vite:preloadError", function () {
+          if (sessionStorage.getItem(key)) return;
+          sessionStorage.setItem(key, "1");
+          window.location.reload();
+        });
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
