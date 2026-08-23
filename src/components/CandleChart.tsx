@@ -60,6 +60,11 @@ interface Props {
   minuteSeries: IndicatorSeries | null;
   interval: string;
   crosses: CrossEvent[];
+  /** 오버레이 켜기/끄기 — 전부 기본 true. */
+  showMa: boolean;
+  showBmsb: boolean;
+  showRsi: boolean;
+  showCrossMarkers: boolean;
   realizedPrice?: number;
   balancedPrice?: number;
   isDark: boolean;
@@ -71,6 +76,10 @@ export function CandleChart({
   minuteSeries,
   interval,
   crosses,
+  showMa,
+  showBmsb,
+  showRsi,
+  showCrossMarkers,
   realizedPrice,
   balancedPrice,
   isDark,
@@ -137,7 +146,7 @@ export function CandleChart({
     const candles = activeSeries ? activeSeries.candles : [];
 
     let bandSeries: ISeriesApi<"Custom"> | null = null;
-    if (activeSeries) {
+    if (activeSeries && showBmsb) {
       // 불마켓밴드: 20주 SMA와 21주 EMA 사이를 채운 밴드 (라방 차트의 갈색 띠).
       const bandData: BandData[] = [];
       for (let i = 0; i < dates.length; i++) {
@@ -183,32 +192,39 @@ export function CandleChart({
     let rsiSeries: ISeriesApi<"Line"> | null = null;
 
     if (activeSeries) {
-      const ma50 = add(
-        chart.addSeries(LineSeries, {
-          color: COLORS.ma50,
-          lineWidth: 1,
-          priceLineVisible: false,
-          title: `50${intervalLabel}`,
-        }),
-      );
-      ma50.setData(lineData(dates, activeSeries.ma50));
-
-      const ma200 = add(
-        chart.addSeries(LineSeries, {
-          color: COLORS.ma200,
-          lineWidth: 2,
-          priceLineVisible: false,
-          title: `200${intervalLabel}`,
-        }),
-      );
-      ma200.setData(lineData(dates, activeSeries.ma200));
-
-      // 다른 봉 뷰에선 ma50이 이미 그 봉 단위 "50X"라 여기 또 50주선을 얹으면 겹친다 — 일봉에서만 그린다.
-      if (interval === "1d") {
-        const ma50w = add(
-          chart.addSeries(LineSeries, { color: COLORS.ma50w, lineWidth: 2, priceLineVisible: false, title: "50주" }),
+      if (showMa) {
+        const ma50 = add(
+          chart.addSeries(LineSeries, {
+            color: COLORS.ma50,
+            lineWidth: 1,
+            priceLineVisible: false,
+            title: `50${intervalLabel}`,
+          }),
         );
-        ma50w.setData(lineData(dates, activeSeries.ma50w));
+        ma50.setData(lineData(dates, activeSeries.ma50));
+
+        const ma200 = add(
+          chart.addSeries(LineSeries, {
+            color: COLORS.ma200,
+            lineWidth: 2,
+            priceLineVisible: false,
+            title: `200${intervalLabel}`,
+          }),
+        );
+        ma200.setData(lineData(dates, activeSeries.ma200));
+
+        // 다른 봉 뷰에선 ma50이 이미 그 봉 단위 "50X"라 여기 또 50주선을 얹으면 겹친다 — 일봉에서만 그린다.
+        if (interval === "1d") {
+          const ma50w = add(
+            chart.addSeries(LineSeries, {
+              color: COLORS.ma50w,
+              lineWidth: 2,
+              priceLineVisible: false,
+              title: "50주",
+            }),
+          );
+          ma50w.setData(lineData(dates, activeSeries.ma50w));
+        }
       }
 
       if (realizedPrice != null) {
@@ -237,42 +253,46 @@ export function CandleChart({
       }
 
       // 골든/데드크로스 마커
-      const markers: SeriesMarker<Time>[] = crosses.map((c) => ({
-        time: toTime(c.date),
-        position: c.type === "golden" ? ("belowBar" as const) : ("aboveBar" as const),
-        color: c.type === "golden" ? COLORS.up : COLORS.down,
-        shape: c.type === "golden" ? ("arrowUp" as const) : ("arrowDown" as const),
-        text: c.type === "golden" ? "골든" : "데드",
-      }));
-      markerApi = markers.length > 0 ? createSeriesMarkers(candleSeries, markers) : null;
+      if (showCrossMarkers) {
+        const markers: SeriesMarker<Time>[] = crosses.map((c) => ({
+          time: toTime(c.date),
+          position: c.type === "golden" ? ("belowBar" as const) : ("aboveBar" as const),
+          color: c.type === "golden" ? COLORS.up : COLORS.down,
+          shape: c.type === "golden" ? ("arrowUp" as const) : ("arrowDown" as const),
+          text: c.type === "golden" ? "골든" : "데드",
+        }));
+        markerApi = markers.length > 0 ? createSeriesMarkers(candleSeries, markers) : null;
+      }
 
       // RSI 서브차트 (pane 1)
-      rsiSeries = chart.addSeries(
-        LineSeries,
-        {
-          color: COLORS.rsi,
-          lineWidth: 1,
-          priceLineVisible: false,
-          title: interval === "1d" ? "RSI(14)" : `RSI(14, ${intervalLabel})`,
-        },
-        1,
-      );
-      rsiSeries.setData(lineData(dates, activeSeries.rsi14));
-      // 과매수 70 / 과매도 30 기준선
-      for (const level of [70, 30]) {
-        rsiSeries.createPriceLine({
-          price: level,
-          color: isDark ? "#4b4f5c" : "#c9c9cf",
-          lineWidth: 1,
-          lineStyle: LineStyle.Dashed,
-          axisLabelVisible: true,
-          title: "",
-        });
-      }
-      const panes = chart.panes();
-      if (panes.length > 1) {
-        panes[0].setHeight(280);
-        panes[1].setHeight(90);
+      if (showRsi) {
+        rsiSeries = chart.addSeries(
+          LineSeries,
+          {
+            color: COLORS.rsi,
+            lineWidth: 1,
+            priceLineVisible: false,
+            title: interval === "1d" ? "RSI(14)" : `RSI(14, ${intervalLabel})`,
+          },
+          1,
+        );
+        rsiSeries.setData(lineData(dates, activeSeries.rsi14));
+        // 과매수 70 / 과매도 30 기준선
+        for (const level of [70, 30]) {
+          rsiSeries.createPriceLine({
+            price: level,
+            color: isDark ? "#4b4f5c" : "#c9c9cf",
+            lineWidth: 1,
+            lineStyle: LineStyle.Dashed,
+            axisLabelVisible: true,
+            title: "",
+          });
+        }
+        const panes = chart.panes();
+        if (panes.length > 1) {
+          panes[0].setHeight(280);
+          panes[1].setHeight(90);
+        }
       }
     }
 
@@ -286,7 +306,20 @@ export function CandleChart({
       if (bandSeries) chart.removeSeries(bandSeries);
       if (rsiSeries) chart.removeSeries(rsiSeries);
     };
-  }, [activeSeries, interval, intervalLabel, crosses, realizedPrice, balancedPrice, isDark, showIndicators]);
+  }, [
+    activeSeries,
+    interval,
+    intervalLabel,
+    crosses,
+    showMa,
+    showBmsb,
+    showRsi,
+    showCrossMarkers,
+    realizedPrice,
+    balancedPrice,
+    isDark,
+    showIndicators,
+  ]);
 
   return <div className="candle-chart" ref={containerRef} />;
 }
