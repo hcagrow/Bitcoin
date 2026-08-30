@@ -29,8 +29,24 @@ export default defineConfig({
         // Real-time BTC/asset prices must never be served stale from cache;
         // only precache the built app shell, let network calls to Binance
         // pass straight through.
-        globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
-        navigateFallbackDenylist: [/^\/Bitcoin\/api-check\.html/, /^\/Bitcoin\/verify-indicators\.html/],
+        globPatterns: ['**/*.{js,css,svg,png,ico}'],
+        // vite-plugin-pwa's default binds every navigation to a *fixed*
+        // precached index.html (cache-first, no network attempt at all) —
+        // after a redeploy that shell keeps pointing at now-deleted hashed
+        // asset files until the whole SW update/activate/reload cycle
+        // completes, which is exactly the "blank page after deploy" bug.
+        // Disable that fixed binding and use NetworkFirst for navigations
+        // instead, so every successful page open fetches the current
+        // index.html directly; the cached copy is only a same-origin
+        // fallback for the rare case the network request itself fails.
+        navigateFallback: undefined,
+        runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.mode === 'navigate',
+            handler: 'NetworkFirst',
+            options: { cacheName: 'html-shell', networkTimeoutSeconds: 3 },
+          },
+        ],
       },
     }),
   ],
