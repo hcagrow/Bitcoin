@@ -1,0 +1,21 @@
+name: Check BTC price
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch current BTC price from Binance
+        run: |
+          curl -s "https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT" | \
+            python3 -c "
+import json, sys, datetime
+d = json.load(sys.stdin)
+print(f\"BTC/USDT: \${float(d['lastPrice']):,.2f}\")
+print(f\"24h change: {d['priceChangePercent']}%\")
+print(f\"24h high: \${float(d['highPrice']):,.2f}\")
+print(f\"24h low: \${float(d['lowPrice']):,.2f}\")
+print(f\"Checked at (UTC): {datetime.datetime.utcnow().isoformat()}\")
+"
