@@ -2,6 +2,13 @@ name: Check BTC price
 
 on:
   workflow_dispatch: {}
+  # Runs on GitHub's own servers, unaffected by this session's own network
+  # restrictions — so a scheduled run's log always has a price no older
+  # than ~15 minutes, readable anytime without needing to dispatch a new
+  # run first. No repo writes here (no commits, no new branch, no elevated
+  # permissions) — the job log itself is the record.
+  schedule:
+    - cron: '*/15 * * * *'
 
 jobs:
   check:
