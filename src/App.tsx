@@ -16,6 +16,7 @@ import { ScoreTrendChart } from "./components/ScoreTrendChart";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { SummaryCard } from "./components/SummaryCard";
 import { SynthesisCard } from "./components/SynthesisCard";
+import { TabBar, type TabId } from "./components/TabBar";
 import { TradeLedgerPanel } from "./components/TradeLedgerPanel";
 import { TradePlanPanel } from "./components/TradePlanPanel";
 import { TradeProgressCard } from "./components/TradeProgressCard";
@@ -50,13 +51,16 @@ import {
   latestCrossState,
 } from "./lib/indicators";
 import { getNotificationPermission, requestNotificationPermission, sendLocalNotification } from "./lib/notifications";
+import { judgeCycle } from "./lib/cycle";
 import { evaluateRealDemand } from "./lib/realDemand";
 import { synthesize } from "./lib/synthesis";
 import { computeTradeStats } from "./lib/tradeLedger";
+import { computeValuationMetrics } from "./lib/valuation";
 import { getZone, loadZones, saveZones } from "./lib/zones";
 import type {
   AlertLogEntry,
   Asset,
+  Candle,
   LadderPlan,
   DailyScoreSnapshot,
   DerivativesEntry,
@@ -81,6 +85,10 @@ const EWY_NOTE_KEY = "btc-app-ewy-note-v1";
 const SCORE_HISTORY_KEY = "btc-app-score-history-v1";
 const ALERT_LOG_KEY = "btc-app-alert-log-v1";
 
+function fmtHeaderPrice(n: number, currency: string): string {
+  return `${currency}${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+}
+
 const INTERVAL_OPTIONS = [
   { label: "1분", value: "1m" },
   { label: "1일", value: "1d" },
@@ -95,8 +103,6 @@ export default function App() {
   const sourceKind = activeAsset.source.kind;
   const binanceSymbol = sourceKind === "binance" ? activeAsset.source.symbol : null;
   const finnhubSymbol = sourceKind === "finnhub" ? activeAsset.source.symbol : null;
-  // binance는 캔들 히스토리까지 주지만 finnhub 무료 티어는 현재가만 준다 — 캔들차트는 binance 전용.
-  const hasCandles = sourceKind === "binance";
 
   const [zones, setZones] = useState<Zone[]>(() => loadZones(loadActiveAssetId()));
   const [series, setSeries] = useState<IndicatorSeries | null>(null);
@@ -106,6 +112,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [finnhubApiKey, setFinnhubApiKey] = useState<string>(() => loadFinnhubApiKey());
+  const [tab, setTab] = useState<TabId>("now");
   const [chartInterval, setChartInterval] = useState("1d");
   const [showMa, setShowMa] = useState(true);
   const [showBmsb, setShowBmsb] = useState(true);
@@ -113,6 +120,8 @@ export default function App() {
   const [showCrossMarkers, setShowCrossMarkers] = useState(true);
   const [weeklySeries, setWeeklySeries] = useState<IndicatorSeries | null>(null);
   const [minuteSeries, setMinuteSeries] = useState<IndicatorSeries | null>(null);
+  // A지표의 200주선·주봉 RSI·최고가 계산용. 차트 봉 단위(weeklySeries)와 무관하게 항상 받는다.
+  const [valuationWeekly, setValuationWeekly] = useState<Candle[]>([]);
   const [etfEntries, setEtfEntries] = useState<EtfFlowEntry[]>(() => loadEntries(ETF_STORAGE_KEY));
   const [derivEntries, setDerivEntries] = useState<DerivativesEntry[]>(() => loadEntries(DERIV_STORAGE_KEY));
   const [tradePlan, setTradePlan] = useState<TradePlan>(() => loadObject(TRADE_PLAN_KEY, DEFAULT_TRADE_PLAN));
@@ -150,6 +159,7 @@ export default function App() {
     // 수동 입력 자산은 부를 API가 없으므로 이전 자산의 시세가 남지 않도록 비우고 끝낸다.
     if (binanceSymbol === null && finnhubSymbol === null) {
       setSeries(null);
+      setValuationWeekly([]);
       setLivePrice(null);
       setChange24h(null);
       setError(null);
@@ -163,12 +173,15 @@ export default function App() {
       setLoading(true);
       setError(null);
       try {
-        const [candles, current] = await Promise.all([
+        const [candles, current, weekly] = await Promise.all([
           fetchDailyCandles(symbol, 1000),
           fetchCurrentPrice(symbol),
+          // 주봉이 실패해도 가격·차트는 떠야 한다 — 가치 평가 지표만 "데이터 부족"으로 남는다.
+          fetchCandles(symbol, "1w", 1000).catch(() => [] as Candle[]),
         ]);
         if (cancelled) return;
         setSeries(buildIndicatorSeries(candles));
+        setValuationWeekly(weekly);
         setLivePrice(current.price);
         setChange24h(current.change24h);
       } catch (e) {
@@ -181,6 +194,10 @@ export default function App() {
     // Finnhub 무료 티어는 현재가만 주고 과거 캔들은 유료 전용이라 series는 비워둔다.
     async function loadFinnhub(symbol: string) {
       setSeries(null);
+      setValuationWeekly([]);
+      // 이전 자산(예: 비트코인)의 가격이 키 오류·조회 실패 때 새 자산 가격처럼 남아 보이지 않게 비운다.
+      setLivePrice(null);
+      setChange24h(null);
       setLoading(true);
       setError(null);
       try {
@@ -273,6 +290,16 @@ export default function App() {
   const bmsbEma = series ? series.bmsbEma[series.bmsbEma.length - 1] : null;
   const currentZone = price != null ? getZone(zones, price) : undefined;
 
+  const valuation = useMemo(
+    () => computeValuationMetrics(series?.candles ?? [], valuationWeekly, price),
+    [series, valuationWeekly, price],
+  );
+  const cycleSummary = useMemo(() => {
+    const drawdownPct =
+      price != null && valuation.ath != null ? ((price - valuation.ath) / valuation.ath) * 100 : null;
+    return judgeCycle(valuation.athDate, drawdownPct).summary;
+  }, [price, valuation]);
+
   const realDemand = useMemo(() => evaluateRealDemand(etfEntries, derivEntries), [etfEntries, derivEntries]);
   const tradeStats = useMemo(() => computeTradeStats(tradePlan, tradeEntries), [tradePlan, tradeEntries]);
 
@@ -286,11 +313,12 @@ export default function App() {
         bmsbSma,
         bmsbEma,
         crossState,
+        ...valuation,
         etfEntries,
         derivEntries,
         manual: manualIndicators,
       }),
-    [price, ma50, ma200, ma50w, bmsbSma, bmsbEma, crossState, etfEntries, derivEntries, manualIndicators],
+    [price, ma50, ma200, ma50w, bmsbSma, bmsbEma, crossState, valuation, etfEntries, derivEntries, manualIndicators],
   );
   const indicatorTotals = useMemo(() => summarizeIndicators(indicatorResults), [indicatorResults]);
 
@@ -302,9 +330,11 @@ export default function App() {
         price,
         aScoreTotal: indicatorTotals.total,
         aScoreScored: indicatorTotals.scored,
+        aScoreKnown: indicatorTotals.known,
+        cycleSummary,
         realDemand,
       }),
-    [currentZone, zones, price, indicatorTotals, realDemand],
+    [currentZone, zones, price, indicatorTotals, cycleSummary, realDemand],
   );
 
   useEffect(() => {
@@ -497,10 +527,34 @@ export default function App() {
     setNotificationPermission(result);
   }
 
+  // 비트코인이 아닌 자산에는 A지표·실수요 화면이 없으므로 "지표" 탭에 머물러 있으면 현황으로 돌린다.
+  const activeTab: TabId = !isBtc && tab === "indicators" ? "now" : tab;
+
+  function handleChangeTab(next: TabId) {
+    setTab(next);
+    window.scrollTo({ top: 0 });
+  }
+
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main">
+        본문으로 건너뛰기
+      </a>
       <header className="app-header">
         <h1>가늠자</h1>
+        {price != null ? (
+          <span className="header-price">
+            {fmtHeaderPrice(price, activeAsset.currency)}
+            {change24h != null && (
+              <span className={`header-price-change ${change24h >= 0 ? "up" : "down"}`}>
+                {change24h >= 0 ? "▲ +" : "▼ "}
+                {change24h.toFixed(2)}%
+              </span>
+            )}
+          </span>
+        ) : (
+          loading && <span className="header-price loading">불러오는 중…</span>
+        )}
         <button type="button" className="settings-btn" onClick={() => setSettingsOpen(true)}>
           설정
         </button>
@@ -515,209 +569,203 @@ export default function App() {
         onRemove={handleRemoveAsset}
       />
 
-      {isBtc && (
-        <SynthesisCard
-          result={synthesis}
-          aScoreTotal={indicatorTotals.total}
-          aScoreScored={indicatorTotals.scored}
-          realDemandVerdict={realDemand.verdict}
-        />
-      )}
-
-      {sourceKind === "manual" && (
-        <ManualPricePanel key={activeAsset.id} asset={activeAsset} onSave={handleSaveManualPrice} />
-      )}
-
-      {sourceKind === "finnhub" && (
-        <FinnhubPricePanel
-          key={activeAsset.id}
-          asset={activeAsset}
-          price={price}
-          change24h={change24h}
-          hasApiKey={finnhubApiKey !== ""}
-        />
-      )}
-
-      {loading && !series && sourceKind !== "manual" && <div className="status-msg">불러오는 중…</div>}
-      {error && <div className="status-msg error">오류: {error}</div>}
-
-      {!hasCandles && price != null && zones.length > 0 && (
-        <section className="section">
-          <h2>구간 게이지</h2>
-          <ZoneGauge zones={zones} price={price} />
-        </section>
-      )}
-
-      {!hasCandles && zones.length === 0 && (
-        <section className="section">
-          <h2>구간 게이지</h2>
-          <p className="section-sub">
-            이 자산의 기준선이 아직 없습니다. 우측 상단 "설정"에서 가격 구간을 입력하세요.
-          </p>
-        </section>
-      )}
-
-      {series && price != null && (
+      <main id="main" className="app-main" tabIndex={-1}>
+      {activeTab === "now" && (
         <>
-          <SummaryCard
-            price={price}
-            change24h={change24h}
-            ma50={ma50}
-            ma200={ma200}
-            crossState={crossState}
-            zone={currentZone}
-          />
-
-          <section className="section">
-            <h2>구간 게이지</h2>
-            <ZoneGauge zones={zones} price={price} />
-          </section>
-
-          <section className="section">
-            <AlertsPanel
-              permission={notificationPermission}
-              onRequestPermission={handleRequestNotificationPermission}
-              nearby={nearbyBoundaries}
-              alertLog={alertLog}
+          {isBtc && (
+            <SynthesisCard
+              result={synthesis}
+              aScoreTotal={indicatorTotals.total}
+              aScoreScored={indicatorTotals.scored}
+              realDemandVerdict={realDemand.verdict}
             />
+          )}
+
+          {sourceKind === "manual" && (
+            <ManualPricePanel key={activeAsset.id} asset={activeAsset} onSave={handleSaveManualPrice} />
+          )}
+
+          {sourceKind === "finnhub" && (
+            <FinnhubPricePanel
+              key={activeAsset.id}
+              asset={activeAsset}
+              price={price}
+              change24h={change24h}
+              hasApiKey={finnhubApiKey !== ""}
+            />
+          )}
+
+          {loading && !series && sourceKind !== "manual" && <div className="status-msg" role="status">불러오는 중…</div>}
+          {error && <div className="status-msg error" role="alert">오류: {error}</div>}
+
+          {price != null && zones.length > 0 && (
+            <section className="section gauge-section">
+              <h2>기준선 대비 위치</h2>
+              <ZoneGauge zones={zones} price={price} currency={activeAsset.currency} />
+            </section>
+          )}
+
+          {price != null && zones.length === 0 && (
+            <section className="section">
+              <h2>기준선 대비 위치</h2>
+              <p className="section-sub">
+                이 자산의 기준선이 아직 없습니다. 우측 상단 "설정"에서 가격 구간을 입력하세요.
+              </p>
+            </section>
+          )}
+
+          {series && price != null && (
+            <>
+              <SummaryCard price={price} ma50={ma50} ma200={ma200} crossState={crossState} />
+
+              <section className="section">
+                <div className="section-header-row">
+                  <h2>가격 차트</h2>
+                  <div className="range-buttons">
+                    {INTERVAL_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        className={chartInterval === opt.value ? "active" : ""}
+                        aria-pressed={chartInterval === opt.value}
+                        onClick={() => setChartInterval(opt.value)}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="range-buttons overlay-toggles">
+                  <button type="button" className={showMa ? "active" : ""} aria-pressed={showMa} onClick={() => setShowMa((v) => !v)}>
+                    이평선
+                  </button>
+                  <button type="button" className={showBmsb ? "active" : ""} aria-pressed={showBmsb} onClick={() => setShowBmsb((v) => !v)}>
+                    불마켓밴드
+                  </button>
+                  <button type="button" className={showRsi ? "active" : ""} aria-pressed={showRsi} onClick={() => setShowRsi((v) => !v)}>
+                    RSI
+                  </button>
+                  <button
+                    type="button"
+                    className={showCrossMarkers ? "active" : ""}
+                    aria-pressed={showCrossMarkers}
+                    onClick={() => setShowCrossMarkers((v) => !v)}
+                  >
+                    크로스마커
+                  </button>
+                </div>
+                {chartInterval === "1m" && (
+                  <p className="section-sub">
+                    불마켓밴드는 20/21분 SMA·EMA로 부를 근거가 없어 1분 봉에는 표시하지 않습니다. 화면을
+                    드래그하거나 두 손가락으로 확대·축소해 원하는 구간을 보세요.
+                  </p>
+                )}
+                {chartInterval === "1w" && weeklySeries == null && (
+                  <p className="status-msg" role="status">주봉 데이터 불러오는 중…</p>
+                )}
+                {chartInterval === "1m" && minuteSeries == null && (
+                  <p className="status-msg" role="status">분봉 데이터 불러오는 중…</p>
+                )}
+                <CandleChart
+                  series={series}
+                  weeklySeries={weeklySeries}
+                  minuteSeries={minuteSeries}
+                  interval={chartInterval}
+                  crosses={chartCrosses}
+                  showMa={showMa}
+                  showBmsb={showBmsb}
+                  showRsi={showRsi}
+                  showCrossMarkers={showCrossMarkers}
+                  realizedPrice={manualIndicators.realizedPrice?.rawValue}
+                  balancedPrice={manualIndicators.balancedPrice?.rawValue}
+                  isDark={isDark}
+                />
+              </section>
+
+              <section className="section">
+                <AlertsPanel
+                  permission={notificationPermission}
+                  onRequestPermission={handleRequestNotificationPermission}
+                  nearby={nearbyBoundaries}
+                  alertLog={alertLog}
+                />
+              </section>
+            </>
+          )}
+        </>
+      )}
+
+      {activeTab === "indicators" && isBtc && (
+        <>
+          <RealDemandCard result={realDemand} />
+
+          <AIndicatorSummaryCard totals={indicatorTotals} />
+
+          <section className="section">
+            <h2>A지표 한눈에</h2>
+            <IndicatorHeatmap results={indicatorResults} />
+            <h3>지금 모양</h3>
+            <IndicatorRadarChart results={indicatorResults} />
+            <h3>종합 점수 추세</h3>
+            <ScoreTrendChart snapshots={scoreHistory} />
           </section>
 
           <section className="section">
-            <div className="section-header-row">
-              <h2>
-                가격 차트{chartInterval === "1m" ? " (캔들 + 이평선 + RSI)" : " (캔들 + 이평선 + 불마켓밴드 + RSI)"}
-              </h2>
-              <div className="range-buttons">
-                {INTERVAL_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    className={chartInterval === opt.value ? "active" : ""}
-                    onClick={() => setChartInterval(opt.value)}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="range-buttons overlay-toggles">
-              <button type="button" className={showMa ? "active" : ""} onClick={() => setShowMa((v) => !v)}>
-                이평선
-              </button>
-              <button type="button" className={showBmsb ? "active" : ""} onClick={() => setShowBmsb((v) => !v)}>
-                불마켓밴드
-              </button>
-              <button type="button" className={showRsi ? "active" : ""} onClick={() => setShowRsi((v) => !v)}>
-                RSI
-              </button>
-              <button
-                type="button"
-                className={showCrossMarkers ? "active" : ""}
-                onClick={() => setShowCrossMarkers((v) => !v)}
-              >
-                크로스마커
-              </button>
-            </div>
-            {chartInterval === "1m" && (
-              <p className="section-sub">
-                불마켓밴드는 20/21분 SMA·EMA로 부를 근거가 없어 1분 봉에는 표시하지 않습니다. 화면을
-                드래그하거나 두 손가락으로 확대·축소해 원하는 구간을 보세요.
-              </p>
-            )}
-            {chartInterval === "1w" && weeklySeries == null && (
-              <p className="status-msg">주봉 데이터 불러오는 중…</p>
-            )}
-            {chartInterval === "1m" && minuteSeries == null && (
-              <p className="status-msg">분봉 데이터 불러오는 중…</p>
-            )}
-            <CandleChart
-              series={series}
-              weeklySeries={weeklySeries}
-              minuteSeries={minuteSeries}
-              interval={chartInterval}
-              crosses={chartCrosses}
-              showMa={showMa}
-              showBmsb={showBmsb}
-              showRsi={showRsi}
-              showCrossMarkers={showCrossMarkers}
-              realizedPrice={manualIndicators.realizedPrice?.rawValue}
-              balancedPrice={manualIndicators.balancedPrice?.rawValue}
-              isDark={isDark}
+            <AIndicatorPanel
+              results={indicatorResults}
+              manual={manualIndicators}
+              onSetTriState={handleSetTriState}
+              onSetNumeric={handleSetNumeric}
+              ewyNote={ewyNote}
+              onSetEwyNote={handleSetEwyNote}
             />
           </section>
         </>
       )}
 
-      <section className="section">
-        <LadderPanel key={activeAsset.id} asset={activeAsset} price={price} onSave={handleSaveLadder} />
-      </section>
+      {activeTab === "records" && (
+        <>
+          {isBtc && (
+            <>
+              <section className="section">
+                <h2>반자동 데이터 입력</h2>
+                <p className="section-sub">
+                  ETF 자금 흐름과 청산·미결제약정·펀딩비를 매일 입력하면, 실수요 판정에 자동으로 반영됩니다.
+                </p>
+                <EtfFlowPanel entries={etfEntries} onAdd={handleAddEtfEntry} onDelete={handleDeleteEtfEntry} />
+                <DerivativesPanel entries={derivEntries} onAdd={handleAddDerivEntry} onDelete={handleDeleteDerivEntry} />
+              </section>
 
-      {isBtc && <RealDemandCard result={realDemand} />}
+              <TradeProgressCard stats={tradeStats} />
 
-      {isBtc && (
-      <section className="section">
-        <h2>반자동 데이터 입력</h2>
-        <p className="section-sub">
-          ETF 자금 흐름과 청산·미결제약정·펀딩비를 매일 입력하면, 위 실수요 판정에 자동으로 반영됩니다.
-        </p>
-        <EtfFlowPanel entries={etfEntries} onAdd={handleAddEtfEntry} onDelete={handleDeleteEtfEntry} />
-        <DerivativesPanel entries={derivEntries} onAdd={handleAddDerivEntry} onDelete={handleDeleteDerivEntry} />
-      </section>
+              <section className="section">
+                <h2>매매 장부</h2>
+                <TradePlanPanel plan={tradePlan} history={tradePlanHistory} onSave={handleSaveTradePlan} />
+                <TradeLedgerPanel entries={tradeEntries} onAdd={handleAddTradeEntry} onDelete={handleDeleteTradeEntry} />
+              </section>
+            </>
+          )}
+
+          <section className="section">
+            <LadderPanel key={activeAsset.id} asset={activeAsset} price={price} onSave={handleSaveLadder} />
+          </section>
+
+          {!isBtc && (
+            <p className="section-sub" style={{ textAlign: "center" }}>
+              A지표 · 실수요 판정 · 매매 장부는 비트코인 분석 프레임이라 BTC 탭에서만 표시됩니다.
+            </p>
+          )}
+        </>
       )}
 
-      {isBtc && <AIndicatorSummaryCard totals={indicatorTotals} />}
-
-      {isBtc && (
-      <section className="section">
-        <h2>A지표 종합 시각화</h2>
-        <div className="ai-viz-grid">
-          <div>
-            <h3>레이더 차트 — 지금 이 순간</h3>
-            <IndicatorRadarChart results={indicatorResults} />
-          </div>
-          <div>
-            <h3>신호등 히트맵 — 빠르게 스캔</h3>
-            <IndicatorHeatmap results={indicatorResults} />
-          </div>
-        </div>
-        <h3>종합 점수 추세</h3>
-        <ScoreTrendChart snapshots={scoreHistory} />
-      </section>
-      )}
-
-      {isBtc && (
-      <section className="section">
-        <AIndicatorPanel
-          results={indicatorResults}
-          manual={manualIndicators}
-          onSetTriState={handleSetTriState}
-          onSetNumeric={handleSetNumeric}
-          ewyNote={ewyNote}
-          onSetEwyNote={handleSetEwyNote}
-        />
-      </section>
-      )}
-
-      {isBtc && <TradeProgressCard stats={tradeStats} />}
-
-      {isBtc && (
-      <section className="section">
-        <h2>매매 장부</h2>
-        <TradePlanPanel plan={tradePlan} history={tradePlanHistory} onSave={handleSaveTradePlan} />
-        <TradeLedgerPanel entries={tradeEntries} onAdd={handleAddTradeEntry} onDelete={handleDeleteTradeEntry} />
-      </section>
-      )}
-
-      {!isBtc && (
-        <p className="section-sub" style={{ textAlign: "center" }}>
-          A지표 · 실수요 판정 · 매매 장부는 비트코인 분석 프레임이라 BTC 탭에서만 표시됩니다.
-        </p>
-      )}
+      </main>
 
       <p className="disclaimer">
         이 대시보드는 예측을 제공하지 않습니다. 미리 정한 기준선과 조건 대비 현재 상태만 계산해 보여주며,
         최종 판단은 사용자의 몫입니다.
       </p>
+
+      <TabBar active={activeTab} onChange={handleChangeTab} showIndicators={isBtc} />
 
       {settingsOpen && (
         <SettingsPanel
