@@ -36,6 +36,7 @@ export function AssetSwitcher({ assets, activeId, onSelect, onAddPreset, onAddCu
             key={a.id}
             type="button"
             className={`asset-tab ${a.id === activeId ? "active" : ""}`}
+            aria-pressed={a.id === activeId}
             onClick={() => onSelect(a.id)}
           >
             {a.name}
@@ -74,6 +75,8 @@ export function AssetSwitcher({ assets, activeId, onSelect, onAddPreset, onAddCu
             <input
               type="text"
               placeholder="직접 추가 (예: SK하이닉스)"
+              aria-label="직접 추가할 자산 이름"
+              autoComplete="off"
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
