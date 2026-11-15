@@ -2,9 +2,11 @@ name: Deploy to GitHub Pages
 
 on:
   push:
+    # main only: the github-pages environment rejects deploys from any other
+    # branch, and a run from one shares the "pages" concurrency group, so it
+    # displaces main's pending deploy and then fails itself.
     branches:
       - main
-      - claude/new-session-ckc0ck
   workflow_dispatch:
 
 permissions:
