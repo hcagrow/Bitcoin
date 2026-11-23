@@ -115,3 +115,41 @@ export async function fetchCurrentPrice(symbol: string): Promise<{ price: number
   writeCache(cacheKey, { fetchedAt: Date.now(), ...result } satisfies PriceCache);
   return result;
 }
+
+/** 알트 일봉 종가를 심볼별로 받는다. 일부가 실패해도 받은 것만 돌려준다(점수 계산이 부족분을 알아서 처리). */
+export async function fetchAltCloses(symbols: string[], limit = 400): Promise<Record<string, number[]>> {
+  const results = await Promise.allSettled(symbols.map((s) => fetchCandles(s, "1d", limit)));
+  const out: Record<string, number[]> = {};
+  results.forEach((r, i) => {
+    if (r.status === "fulfilled") out[symbols[i]] = r.value.map((c) => c.close);
+  });
+  return out;
+}
+
+const FUNDING_CACHE_TTL_MS = 5 * 60 * 1000;
+let fundingCache: { fetchedAt: number; key: string; rates: Record<string, number> } | null = null;
+
+/**
+ * 무기한 선물 최근 8시간 펀딩비(소수). 선물 서버(fapi)는 지역에 따라 막히므로 실패한 종목은 빼고
+ * 돌려준다 — 전부 실패하면 빈 객체라 "선물 펀딩비" 항목만 데이터 부족으로 남는다.
+ */
+export async function fetchFundingRates(symbols: string[]): Promise<Record<string, number>> {
+  const key = symbols.join(",");
+  if (fundingCache && fundingCache.key === key && Date.now() - fundingCache.fetchedAt < FUNDING_CACHE_TTL_MS) {
+    return fundingCache.rates;
+  }
+  const results = await Promise.allSettled(
+    symbols.map(async (s) => {
+      const res = await fetch(`https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${s}`);
+      if (!res.ok) throw new Error(String(res.status));
+      const data = (await res.json()) as { lastFundingRate?: string };
+      return Number(data.lastFundingRate);
+    }),
+  );
+  const rates: Record<string, number> = {};
+  results.forEach((r, i) => {
+    if (r.status === "fulfilled" && Number.isFinite(r.value)) rates[symbols[i]] = r.value;
+  });
+  fundingCache = { fetchedAt: Date.now(), key, rates };
+  return rates;
+}
