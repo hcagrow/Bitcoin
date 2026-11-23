@@ -13,6 +13,7 @@ import { IndicatorRadarChart } from "./components/IndicatorRadarChart";
 import { CandleChart } from "./components/CandleChart";
 import { RealDemandCard } from "./components/RealDemandCard";
 import { ScoreTrendChart } from "./components/ScoreTrendChart";
+import { CryptoRegimeCard } from "./components/CryptoRegimeCard";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { SummaryCard } from "./components/SummaryCard";
 import { SynthesisCard } from "./components/SynthesisCard";
@@ -30,7 +31,8 @@ import {
   saveActiveAssetId,
   saveAssets,
 } from "./lib/assets";
-import { fetchCandles, fetchCurrentPrice, fetchDailyCandles } from "./lib/binance";
+import { fetchAltCloses, fetchCandles, fetchCurrentPrice, fetchDailyCandles, fetchFundingRates } from "./lib/binance";
+import { ALT_UNIVERSE, FUNDING_SYMBOLS, computeRegime } from "./lib/cryptoRegime";
 import { fetchFinnhubQuote, loadFinnhubApiKey, saveFinnhubApiKey } from "./lib/finnhub";
 import {
   loadEntries,
@@ -122,6 +124,12 @@ export default function App() {
   const [minuteSeries, setMinuteSeries] = useState<IndicatorSeries | null>(null);
   // A지표의 200주선·주봉 RSI·최고가 계산용. 차트 봉 단위(weeklySeries)와 무관하게 항상 받는다.
   const [valuationWeekly, setValuationWeekly] = useState<Candle[]>([]);
+  // 코인 시장 체력: 알트 일봉·펀딩비는 "지표" 탭을 열 때만 받는다.
+  const [regimeInputs, setRegimeInputs] = useState<{
+    altCloses: Record<string, number[]>;
+    funding: Record<string, number>;
+  } | null>(null);
+  const [regimeLoading, setRegimeLoading] = useState(false);
   const [etfEntries, setEtfEntries] = useState<EtfFlowEntry[]>(() => loadEntries(ETF_STORAGE_KEY));
   const [derivEntries, setDerivEntries] = useState<DerivativesEntry[]>(() => loadEntries(DERIV_STORAGE_KEY));
   const [tradePlan, setTradePlan] = useState<TradePlan>(() => loadObject(TRADE_PLAN_KEY, DEFAULT_TRADE_PLAN));
@@ -299,6 +307,18 @@ export default function App() {
       price != null && valuation.ath != null ? ((price - valuation.ath) / valuation.ath) * 100 : null;
     return judgeCycle(valuation.athDate, drawdownPct).summary;
   }, [price, valuation]);
+
+  const regime = useMemo(
+    () =>
+      series && regimeInputs
+        ? computeRegime({
+            btcCloses: series.candles.map((c) => c.close),
+            altCloses: regimeInputs.altCloses,
+            funding: regimeInputs.funding,
+          })
+        : null,
+    [series, regimeInputs],
+  );
 
   const realDemand = useMemo(() => evaluateRealDemand(etfEntries, derivEntries), [etfEntries, derivEntries]);
   const tradeStats = useMemo(() => computeTradeStats(tradePlan, tradeEntries), [tradePlan, tradeEntries]);
@@ -530,6 +550,23 @@ export default function App() {
   // 비트코인이 아닌 자산에는 A지표·실수요 화면이 없으므로 "지표" 탭에 머물러 있으면 현황으로 돌린다.
   const activeTab: TabId = !isBtc && tab === "indicators" ? "now" : tab;
 
+  const wantRegime = isBtc && activeTab === "indicators" && series !== null;
+  useEffect(() => {
+    if (!wantRegime) return;
+    let cancelled = false;
+    setRegimeLoading(true);
+    Promise.all([fetchAltCloses(ALT_UNIVERSE), fetchFundingRates(FUNDING_SYMBOLS)])
+      .then(([altCloses, funding]) => {
+        if (!cancelled) setRegimeInputs({ altCloses, funding });
+      })
+      .finally(() => {
+        if (!cancelled) setRegimeLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [wantRegime]);
+
   function handleChangeTab(next: TabId) {
     setTab(next);
     window.scrollTo({ top: 0 });
@@ -697,6 +734,8 @@ export default function App() {
 
       {activeTab === "indicators" && isBtc && (
         <>
+          <CryptoRegimeCard result={regime} loading={regimeLoading} />
+
           <RealDemandCard result={realDemand} />
 
           <AIndicatorSummaryCard totals={indicatorTotals} />
